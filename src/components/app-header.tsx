@@ -11,7 +11,7 @@ interface AppHeaderProps {
   viewMode: "timeline" | "focus";
   setViewMode: Dispatch<SetStateAction<"timeline" | "focus">>;
   mood: string;
-  setMood: Dispatch<SetStateAction<string>>;
+  setMood: (mood: string) => void;
 }
 
 export function AppHeader({

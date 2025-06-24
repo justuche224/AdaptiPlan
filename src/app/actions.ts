@@ -10,6 +10,16 @@ import type {
   IntelligentScheduleAdjustmentInput,
   IntelligentScheduleAdjustmentOutput,
 } from "@/ai/flows/intelligent-schedule-adjustment";
+import { getMindfulMomentSuggestion } from "@/ai/flows/mindful-moment-suggestion";
+import type {
+    MindfulMomentSuggestionInput,
+    MindfulMomentSuggestionOutput,
+} from "@/ai/flows/mindful-moment-suggestion";
+import { getDailyProgressSummary } from "@/ai/flows/daily-progress-summary";
+import type {
+    DailyProgressSummaryInput,
+    DailyProgressSummaryOutput,
+} from "@/ai/flows/daily-progress-summary";
 
 export async function decomposeTask(
   input: SmartTaskDecompositionInput
@@ -33,4 +43,16 @@ export async function adjustSchedule(
         message: "I had trouble creating a new schedule, so I've kept your current one. Let's try again later!"
     };
   }
+}
+
+export async function getMindfulMoment(
+    input: MindfulMomentSuggestionInput
+): Promise<MindfulMomentSuggestionOutput> {
+    return await getMindfulMomentSuggestion(input);
+}
+
+export async function getDailySummary(
+    input: DailyProgressSummaryInput
+): Promise<DailyProgressSummaryOutput> {
+    return await getDailyProgressSummary(input);
 }

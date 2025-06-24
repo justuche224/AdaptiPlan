@@ -1,8 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { Task } from "@/lib/types";
-import { decomposeTask, adjustSchedule } from "@/app/actions";
+import {
+  decomposeTask,
+  adjustSchedule,
+  getMindfulMoment,
+  getDailySummary,
+} from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { AppHeader } from "@/components/app-header";
 import { TaskInputForm } from "@/components/task-input-form";
@@ -10,13 +15,35 @@ import { TimelineView } from "@/components/timeline-view";
 import { FocusView } from "@/components/focus-view";
 import { Card, CardContent } from "@/components/ui/card";
 import { AdaptiPlanLogo } from "@/components/icons";
+import { MindfulMomentAlert } from "@/components/mindful-moment-alert";
+import { DailySummaryView } from "@/components/daily-summary-view";
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [mood, setMood] = useState("neutral");
   const [viewMode, setViewMode] = useState<"timeline" | "focus">("timeline");
   const [isLoading, setIsLoading] = useState(false);
+  const [mindfulSuggestion, setMindfulSuggestion] = useState<string | null>(
+    null
+  );
+  const [dailySummary, setDailySummary] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const handleSetMood = useCallback(async (newMood: string) => {
+    setMood(newMood);
+    if (newMood === "stressed") {
+      try {
+        const result = await getMindfulMoment({ userMood: newMood });
+        if (result.suggestion) {
+          setMindfulSuggestion(result.suggestion);
+        }
+      } catch (error) {
+        console.error("Failed to get mindful moment:", error);
+      }
+    } else {
+      setMindfulSuggestion(null);
+    }
+  }, []);
 
   const handleAddTask = async (taskTitle: string) => {
     if (!taskTitle.trim()) return;
@@ -30,7 +57,8 @@ export default function Home() {
       if (!result || result.subTasks.length === 0) {
         toast({
           title: "No sub-tasks generated",
-          description: "The AI couldn't break down the task. Please try a different wording.",
+          description:
+            "The AI couldn't break down the task. Please try a different wording.",
           variant: "destructive",
         });
         setIsLoading(false);
@@ -63,12 +91,17 @@ export default function Home() {
       });
 
       setTasks((prevTasks) => [...prevTasks, ...newTasks]);
-      
+
       if (newTasks.length > 0) {
         setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(`item-${newTasks[0].id}`);
+          const firstNewTaskEl = document.getElementById(
+            `item-${newTasks[0].id}`
+          );
           if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstNewTaskEl.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
           }
         }, 300);
       }
@@ -77,7 +110,6 @@ export default function Home() {
         title: "Tasks Added",
         description: "Your new tasks are on the timeline.",
       });
-
     } catch (error) {
       console.error(error);
       toast({
@@ -107,17 +139,18 @@ export default function Home() {
       if (!result || !result.subTasks || result.subTasks.length === 0) {
         toast({
           title: "Couldn't break down task",
-          description: "The AI couldn't break this down further. Maybe it's small enough?",
+          description:
+            "The AI couldn't break this down further. Maybe it's small enough?",
           variant: "destructive",
         });
         setIsLoading(false);
         return;
       }
-      
-      const originalTaskIndex = tasks.findIndex(t => t.id === taskId);
+
+      const originalTaskIndex = tasks.findIndex((t) => t.id === taskId);
       if (originalTaskIndex === -1) {
-          setIsLoading(false);
-          return; 
+        setIsLoading(false);
+        return;
       }
 
       const originalTask = tasks[originalTaskIndex];
@@ -143,7 +176,7 @@ export default function Home() {
 
       let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
 
-      const updatedTasksAfter = tasksAfter.map(task => {
+      const updatedTasksAfter = tasksAfter.map((task) => {
         const newStartTime = new Date(nextTaskStartTime.getTime());
         nextTaskStartTime = new Date(
           nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
@@ -151,14 +184,23 @@ export default function Home() {
         return { ...task, startTime: newStartTime.toISOString() };
       });
 
-      const newTaskList = [...tasksBefore, ...newSubTasks, ...updatedTasksAfter];
+      const newTaskList = [
+        ...tasksBefore,
+        ...newSubTasks,
+        ...updatedTasksAfter,
+      ];
       setTasks(newTaskList);
 
       if (newSubTasks.length > 0) {
         setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(`item-${newSubTasks[0].id}`);
+          const firstNewTaskEl = document.getElementById(
+            `item-${newSubTasks[0].id}`
+          );
           if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstNewTaskEl.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
           }
         }, 300);
       }
@@ -167,7 +209,6 @@ export default function Home() {
         title: "Task Broken Down",
         description: "I've replaced the task with smaller steps.",
       });
-
     } catch (error) {
       console.error(error);
       toast({
@@ -184,7 +225,7 @@ export default function Home() {
     taskId: string,
     status: "completed" | "missed"
   ) => {
-    const updatedTasks = tasks.map((task) =>
+    let updatedTasks = tasks.map((task) =>
       task.id === taskId ? { ...task, status } : task
     );
     setTasks(updatedTasks);
@@ -208,15 +249,14 @@ export default function Home() {
           missedTasks: JSON.stringify([tasks.find((t) => t.id === taskId)]),
           userMood: mood,
         });
-        
-        const rescheduledTasks: Task[] = JSON.parse(result.rescheduledSchedule);
-        setTasks(rescheduledTasks);
-        
+
+        updatedTasks = JSON.parse(result.rescheduledSchedule);
+        setTasks(updatedTasks);
+
         toast({
           title: "Schedule Adjusted",
           description: result.message,
         });
-
       } catch (error) {
         console.error(error);
         toast({
@@ -229,22 +269,83 @@ export default function Home() {
       }
       setIsLoading(false);
     }
+
+    // Check for daily summary
+    const allTasksDone = updatedTasks.every((t) => t.status !== "pending");
+    if (allTasksDone && updatedTasks.length > 0 && !dailySummary) {
+      setIsLoading(true);
+      try {
+        const result = await getDailySummary({
+          tasks: JSON.stringify(updatedTasks),
+        });
+        setDailySummary(result.summary);
+      } catch (error) {
+        console.error("Failed to get daily summary:", error);
+        setDailySummary(
+          "You've completed all your tasks for the day. Great job!"
+        );
+      }
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetDay = () => {
+    setTasks([]);
+    setDailySummary(null);
+    setMindfulSuggestion(null);
+    setMood("neutral");
+    setViewMode("timeline");
   };
 
   const currentTask = useMemo(
     () => tasks.find((task) => task.status === "pending"),
     [tasks]
   );
-  
+
   const welcomeContent = (
-      <div className="flex flex-col items-center justify-center text-center p-8 h-full">
-        <AdaptiPlanLogo className="w-24 h-24 mb-6 text-primary" />
-        <h2 className="text-3xl font-bold mb-2 font-headline">Welcome to AdaptiPlan</h2>
-        <p className="text-muted-foreground max-w-md">
-          Start by telling me a large task you want to accomplish. For example, &quot;clean my apartment&quot; or &quot;prepare for final exams&quot;. I&apos;ll break it down into manageable steps for you.
-        </p>
-      </div>
+    <div className="flex flex-col items-center justify-center text-center p-8 h-full">
+      <AdaptiPlanLogo className="w-24 h-24 mb-6 text-primary" />
+      <h2 className="text-3xl font-bold mb-2 font-headline">
+        Welcome to AdaptiPlan
+      </h2>
+      <p className="text-muted-foreground max-w-md">
+        Start by telling me a large task you want to accomplish. For example,
+        &quot;clean my apartment&quot; or &quot;prepare for final exams&quot;.
+        I&apos;ll break it down into manageable steps for you.
+      </p>
+    </div>
+  );
+
+  const renderMainContent = () => {
+    if (dailySummary) {
+      return (
+        <DailySummaryView summary={dailySummary} onReset={handleResetDay} />
+      );
+    }
+
+    if (tasks.length === 0 && !isLoading) {
+      return (
+        <Card className="flex-grow flex items-center justify-center">
+          <CardContent className="p-0">{welcomeContent}</CardContent>
+        </Card>
+      );
+    }
+
+    if (viewMode === "timeline") {
+      return (
+        <TimelineView
+          tasks={tasks}
+          onUpdateTaskStatus={handleUpdateTaskStatus}
+          onBreakDownTask={handleBreakDownTask}
+          isLoading={isLoading}
+        />
+      );
+    }
+
+    return (
+      <FocusView task={currentTask} onUpdateTaskStatus={handleUpdateTaskStatus} />
     );
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -252,25 +353,21 @@ export default function Home() {
         viewMode={viewMode}
         setViewMode={setViewMode}
         mood={mood}
-        setMood={setMood}
+        setMood={handleSetMood}
       />
       <main className="flex-grow container mx-auto p-4 flex flex-col gap-6">
-        <TaskInputForm onSubmit={handleAddTask} isLoading={isLoading} />
-
-        {tasks.length === 0 && !isLoading ? (
-          <Card className="flex-grow flex items-center justify-center">
-            <CardContent className="p-0">{welcomeContent}</CardContent>
-          </Card>
-        ) : viewMode === "timeline" ? (
-          <TimelineView
-            tasks={tasks}
-            onUpdateTaskStatus={handleUpdateTaskStatus}
-            onBreakDownTask={handleBreakDownTask}
-            isLoading={isLoading}
-          />
-        ) : (
-          <FocusView task={currentTask} onUpdateTaskStatus={handleUpdateTaskStatus} />
+        {!dailySummary && (
+          <TaskInputForm onSubmit={handleAddTask} isLoading={isLoading} />
         )}
+
+        {mindfulSuggestion && (
+          <MindfulMomentAlert
+            suggestion={mindfulSuggestion}
+            onDismiss={() => setMindfulSuggestion(null)}
+          />
+        )}
+
+        {renderMainContent()}
       </main>
       <footer className="text-center p-4 text-xs text-muted-foreground">
         <p>AdaptiPlan by Firebase Studio</p>

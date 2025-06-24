@@ -1,11 +1,10 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 
 interface MoodSelectorProps {
   mood: string;
-  setMood: Dispatch<SetStateAction<string>>;
+  setMood: (mood: string) => void;
 }
 
 const moods = [
