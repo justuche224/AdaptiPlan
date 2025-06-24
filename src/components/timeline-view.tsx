@@ -19,14 +19,13 @@ type TimelineItem =
   | { type: "task"; data: Task }
   | { type: "break"; data: { id: string; duration: number } }
   | { type: "header"; data: { id: string; title: string } }
-  | { type: "day_separator"; data: { id: string; day: number; date: string } };
+  | { type: "day_separator"; data: { id: string; date: string } };
 
 export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoading }: TimelineViewProps) {
   let accumulatedWorkTime = 0;
   const items: TimelineItem[] = [];
   
   let currentDay: string | null = null;
-  let dayCounter = 0;
 
   for (const task of tasks) {
     const taskDate = new Date(task.startTime);
@@ -34,12 +33,10 @@ export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoa
 
     if (taskDayString !== currentDay) {
         currentDay = taskDayString;
-        dayCounter++;
         items.push({
             type: "day_separator",
             data: {
-                id: `day_${dayCounter}`,
-                day: dayCounter,
+                id: `day_${taskDayString.replace(/\s/g, '_')}`,
                 date: taskDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
             }
         });
@@ -87,8 +84,7 @@ export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoa
                 <div className="pt-6 pb-2">
                     <h2 className="flex items-center gap-3 text-xl font-bold text-foreground">
                         <CalendarDays className="h-6 w-6 text-primary" />
-                        <span>Day {item.data.day}</span>
-                        <span className="text-sm font-normal text-muted-foreground">{item.data.date}</span>
+                        <span>{item.data.date}</span>
                     </h2>
                     <hr className="mt-2 border-border" />
                 </div>
