@@ -63,6 +63,16 @@ export default function Home() {
       });
 
       setTasks((prevTasks) => [...prevTasks, ...newTasks]);
+      
+      if (newTasks.length > 0) {
+        setTimeout(() => {
+          const firstNewTaskEl = document.getElementById(`item-${newTasks[0].id}`);
+          if (firstNewTaskEl) {
+            firstNewTaskEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
+      }
+
       toast({
         title: "Tasks Added",
         description: "Your new tasks are on the timeline.",
@@ -104,43 +114,54 @@ export default function Home() {
         return;
       }
       
-      setTasks(currentTasks => {
-        const originalTaskIndex = currentTasks.findIndex(t => t.id === taskId);
-        if (originalTaskIndex === -1) return currentTasks; 
+      const originalTaskIndex = tasks.findIndex(t => t.id === taskId);
+      if (originalTaskIndex === -1) {
+          setIsLoading(false);
+          return; 
+      }
 
-        const originalTask = currentTasks[originalTaskIndex];
-        let lastEndTime = new Date(originalTask.startTime);
+      const originalTask = tasks[originalTaskIndex];
+      let lastEndTime = new Date(originalTask.startTime);
 
-        const newSubTasks: Task[] = result.subTasks.map((subTask, index) => {
-          const startTime = new Date(lastEndTime.getTime());
-          lastEndTime = new Date(
-            lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
-          );
+      const newSubTasks: Task[] = result.subTasks.map((subTask, index) => {
+        const startTime = new Date(lastEndTime.getTime());
+        lastEndTime = new Date(
+          lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
+        );
 
-          return {
-            id: `task_${Date.now()}_${index}`,
-            name: subTask.name,
-            durationEstimateMinutes: subTask.durationEstimateMinutes,
-            status: "pending",
-            startTime: startTime.toISOString(),
-          };
-        });
-
-        const tasksBefore = currentTasks.slice(0, originalTaskIndex);
-        const tasksAfter = currentTasks.slice(originalTaskIndex + 1);
-
-        let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
-
-        const updatedTasksAfter = tasksAfter.map(task => {
-          const newStartTime = new Date(nextTaskStartTime.getTime());
-          nextTaskStartTime = new Date(
-            nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
-          );
-          return { ...task, startTime: newStartTime.toISOString() };
-        });
-
-        return [...tasksBefore, ...newSubTasks, ...updatedTasksAfter];
+        return {
+          id: `task_${Date.now()}_${index}`,
+          name: subTask.name,
+          durationEstimateMinutes: subTask.durationEstimateMinutes,
+          status: "pending",
+          startTime: startTime.toISOString(),
+        };
       });
+
+      const tasksBefore = tasks.slice(0, originalTaskIndex);
+      const tasksAfter = tasks.slice(originalTaskIndex + 1);
+
+      let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
+
+      const updatedTasksAfter = tasksAfter.map(task => {
+        const newStartTime = new Date(nextTaskStartTime.getTime());
+        nextTaskStartTime = new Date(
+          nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
+        );
+        return { ...task, startTime: newStartTime.toISOString() };
+      });
+
+      const newTaskList = [...tasksBefore, ...newSubTasks, ...updatedTasksAfter];
+      setTasks(newTaskList);
+
+      if (newSubTasks.length > 0) {
+        setTimeout(() => {
+          const firstNewTaskEl = document.getElementById(`item-${newSubTasks[0].id}`);
+          if (firstNewTaskEl) {
+            firstNewTaskEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 300);
+      }
 
       toast({
         title: "Task Broken Down",

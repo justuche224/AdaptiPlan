@@ -41,6 +41,7 @@ export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoa
         {items.map((item, index) => (
           <motion.div
             key={item.data.id}
+            id={`item-${item.data.id}`}
             layout
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
