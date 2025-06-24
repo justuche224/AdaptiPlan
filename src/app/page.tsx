@@ -87,6 +87,8 @@ export default function Home() {
           durationEstimateMinutes: subTask.durationEstimateMinutes,
           status: "pending",
           startTime: startTime.toISOString(),
+          parentTaskTitle: taskTitle,
+          isFirstOfParent: index === 0,
         };
       });
 
@@ -168,6 +170,8 @@ export default function Home() {
           durationEstimateMinutes: subTask.durationEstimateMinutes,
           status: "pending",
           startTime: startTime.toISOString(),
+          parentTaskTitle: taskTitle,
+          isFirstOfParent: index === 0,
         };
       });
 

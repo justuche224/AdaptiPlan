@@ -4,4 +4,6 @@ export interface Task {
   durationEstimateMinutes: number;
   status: 'pending' | 'completed' | 'missed';
   startTime: string; // ISO string for easy serialization
+  parentTaskTitle?: string;
+  isFirstOfParent?: boolean;
 }
