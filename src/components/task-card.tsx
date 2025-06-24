@@ -4,15 +4,17 @@ import type { Task } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, X, Clock } from "lucide-react";
+import { Check, X, Clock, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TaskCardProps {
   task: Task;
   onUpdateStatus: (taskId: string, status: "completed" | "missed") => void;
+  onBreakDown: (taskId: string, taskTitle: string) => void;
+  isLoading: boolean;
 }
 
-export function TaskCard({ task, onUpdateStatus }: TaskCardProps) {
+export function TaskCard({ task, onUpdateStatus, onBreakDown, isLoading }: TaskCardProps) {
   const startTime = new Date(task.startTime);
   const endTime = new Date(
     startTime.getTime() + task.durationEstimateMinutes * 60000
@@ -60,9 +62,20 @@ export function TaskCard({ task, onUpdateStatus }: TaskCardProps) {
             <Button
               size="icon"
               variant="outline"
+              className="h-9 w-9 rounded-full border-primary/50 text-primary/80 hover:bg-primary/10 hover:text-primary"
+              onClick={() => onBreakDown(task.id, task.name)}
+              aria-label={`Break down task '${task.name}'`}
+              disabled={isLoading}
+            >
+              <Wand2 className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
               className="h-9 w-9 rounded-full border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-400"
               onClick={() => onUpdateStatus(task.id, "completed")}
               aria-label={`Mark task '${task.name}' as completed`}
+              disabled={isLoading}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -72,6 +85,7 @@ export function TaskCard({ task, onUpdateStatus }: TaskCardProps) {
               className="h-9 w-9 rounded-full border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-400"
               onClick={() => onUpdateStatus(task.id, "missed")}
               aria-label={`Mark task '${task.name}' as missed`}
+              disabled={isLoading}
             >
               <X className="h-4 w-4" />
             </Button>

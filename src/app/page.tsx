@@ -79,6 +79,86 @@ export default function Home() {
     setIsLoading(false);
   };
 
+  const handleBreakDownTask = async (taskId: string, taskTitle: string) => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    toast({
+      title: "Breaking it down...",
+      description: "Getting smaller steps from the AI.",
+    });
+
+    try {
+      const result = await decomposeTask({
+        task: taskTitle,
+        userMood: mood,
+      });
+
+      if (!result || !result.subTasks || result.subTasks.length === 0) {
+        toast({
+          title: "Couldn't break down task",
+          description: "The AI couldn't break this down further. Maybe it's small enough?",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+      
+      setTasks(currentTasks => {
+        const originalTaskIndex = currentTasks.findIndex(t => t.id === taskId);
+        if (originalTaskIndex === -1) return currentTasks; 
+
+        const originalTask = currentTasks[originalTaskIndex];
+        let lastEndTime = new Date(originalTask.startTime);
+
+        const newSubTasks: Task[] = result.subTasks.map((subTask, index) => {
+          const startTime = new Date(lastEndTime.getTime());
+          lastEndTime = new Date(
+            lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
+          );
+
+          return {
+            id: `task_${Date.now()}_${index}`,
+            name: subTask.name,
+            durationEstimateMinutes: subTask.durationEstimateMinutes,
+            status: "pending",
+            startTime: startTime.toISOString(),
+          };
+        });
+
+        const tasksBefore = currentTasks.slice(0, originalTaskIndex);
+        const tasksAfter = currentTasks.slice(originalTaskIndex + 1);
+
+        let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
+
+        const updatedTasksAfter = tasksAfter.map(task => {
+          const newStartTime = new Date(nextTaskStartTime.getTime());
+          nextTaskStartTime = new Date(
+            nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
+          );
+          return { ...task, startTime: newStartTime.toISOString() };
+        });
+
+        return [...tasksBefore, ...newSubTasks, ...updatedTasksAfter];
+      });
+
+      toast({
+        title: "Task Broken Down",
+        description: "I've replaced the task with smaller steps.",
+      });
+
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: "Error",
+        description: "Could not break down task. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleUpdateTaskStatus = async (
     taskId: string,
     status: "completed" | "missed"
@@ -161,7 +241,12 @@ export default function Home() {
             <CardContent className="p-0">{welcomeContent}</CardContent>
           </Card>
         ) : viewMode === "timeline" ? (
-          <TimelineView tasks={tasks} onUpdateTaskStatus={handleUpdateTaskStatus} />
+          <TimelineView
+            tasks={tasks}
+            onUpdateTaskStatus={handleUpdateTaskStatus}
+            onBreakDownTask={handleBreakDownTask}
+            isLoading={isLoading}
+          />
         ) : (
           <FocusView task={currentTask} onUpdateTaskStatus={handleUpdateTaskStatus} />
         )}

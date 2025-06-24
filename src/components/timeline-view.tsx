@@ -8,12 +8,14 @@ import { AnimatePresence, motion } from "framer-motion";
 interface TimelineViewProps {
   tasks: Task[];
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
+  onBreakDownTask: (taskId: string, taskTitle: string) => void;
+  isLoading: boolean;
 }
 
 const BREAK_DURATION = 15; // 15 minutes
 const WORK_SESSION_DURATION = 90; // 90 minutes
 
-export function TimelineView({ tasks, onUpdateTaskStatus }: TimelineViewProps) {
+export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoading }: TimelineViewProps) {
   let accumulatedWorkTime = 0;
   const items = [];
 
@@ -49,6 +51,8 @@ export function TimelineView({ tasks, onUpdateTaskStatus }: TimelineViewProps) {
               <TaskCard
                 task={item.data}
                 onUpdateStatus={onUpdateTaskStatus}
+                onBreakDown={onBreakDownTask}
+                isLoading={isLoading}
               />
             ) : (
               <div className="flex items-center gap-4 pl-6">
