@@ -331,7 +331,8 @@ export default function Home() {
         const finalSchedule = reorderedTasks.map((task) => {
           const currentTaskStartTime = new Date(nextStartTime.getTime());
           nextStartTime = new Date(
-            currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
+            currentTaskStartTime.getTime() +
+              task.durationEstimateMinutes * 60000
           );
           return {
             ...task,
@@ -339,12 +340,12 @@ export default function Home() {
           };
         });
 
-        toast({
-          title: "Schedule Updated",
-          description: "Your tasks have been rearranged.",
-        });
-
         return finalSchedule;
+      });
+
+      toast({
+        title: "Schedule Updated",
+        description: "Your tasks have been rearranged.",
       });
     }
   };
