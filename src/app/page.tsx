@@ -1,429 +1,98 @@
-"use client";
+'use client';
 
-import { useState, useMemo, useCallback } from "react";
-import type { Task } from "@/lib/types";
-import {
-  decomposeTask,
-  adjustSchedule,
-  getMindfulMoment,
-  getDailySummary,
-} from "@/app/actions";
-import { useToast } from "@/hooks/use-toast";
-import { AppHeader } from "@/components/app-header";
-import { TaskInputForm } from "@/components/task-input-form";
-import { TimelineView } from "@/components/timeline-view";
-import { FocusView } from "@/components/focus-view";
-import { Card, CardContent } from "@/components/ui/card";
-import { AdaptiPlanLogo } from "@/components/icons";
-import { MindfulMomentAlert } from "@/components/mindful-moment-alert";
-import { DailySummaryView } from "@/components/daily-summary-view";
-import type { DragEndEvent } from "@dnd-kit/core";
-import { arrayMove } from "@dnd-kit/sortable";
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AdaptiPlanLogo } from '@/components/icons';
+import { ArrowRight, Wand2, CalendarClock, Lightbulb } from 'lucide-react';
 
-export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [mood, setMood] = useState("neutral");
-  const [viewMode, setViewMode] = useState<"timeline" | "focus">("timeline");
-  const [isLoading, setIsLoading] = useState(false);
-  const [mindfulSuggestion, setMindfulSuggestion] = useState<string | null>(
-    null
-  );
-  const [dailySummary, setDailySummary] = useState<string | null>(null);
-  const { toast } = useToast();
-
-  const handleSetMood = useCallback(async (newMood: string) => {
-    setMood(newMood);
-    if (newMood === "stressed") {
-      try {
-        const result = await getMindfulMoment({ userMood: newMood });
-        if (result.suggestion) {
-          setMindfulSuggestion(result.suggestion);
-        }
-      } catch (error) {
-        console.error("Failed to get mindful moment:", error);
-      }
-    } else {
-      setMindfulSuggestion(null);
-    }
-  }, []);
-
-  const handleAddTask = async (taskTitle: string) => {
-    if (!taskTitle.trim()) return;
-    setIsLoading(true);
-    try {
-      const result = await decomposeTask({
-        task: taskTitle,
-        userMood: mood,
-      });
-
-      if (!result || result.subTasks.length === 0) {
-        toast({
-          title: "No sub-tasks generated",
-          description:
-            "The AI couldn't break down the task. Please try a different wording.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      let lastEndTime = new Date();
-      if (tasks.length > 0) {
-        const lastTask = tasks[tasks.length - 1];
-        lastEndTime = new Date(
-          new Date(lastTask.startTime).getTime() +
-            lastTask.durationEstimateMinutes * 60000
-        );
-        lastEndTime = new Date(lastEndTime.getTime() + 5 * 60000); // 5 min buffer
-      }
-
-      const newTasks: Task[] = result.subTasks.map((subTask, index) => {
-        const startTime = new Date(lastEndTime.getTime());
-        lastEndTime = new Date(
-          lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
-        );
-
-        return {
-          id: `task_${Date.now()}_${index}`,
-          name: subTask.name,
-          durationEstimateMinutes: subTask.durationEstimateMinutes,
-          status: "pending",
-          startTime: startTime.toISOString(),
-          parentTaskTitle: taskTitle,
-          isFirstOfParent: index === 0,
-        };
-      });
-
-      setTasks((prevTasks) => [...prevTasks, ...newTasks]);
-
-      if (newTasks.length > 0) {
-        setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(
-            `item-${newTasks[0].id}`
-          );
-          if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          }
-        }, 300);
-      }
-
-      toast({
-        title: "Tasks Added",
-        description: "Your new tasks are on the timeline.",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description: "Could not break down task. Please try again.",
-        variant: "destructive",
-      });
-    }
-    setIsLoading(false);
-  };
-
-  const handleBreakDownTask = async (taskId: string, taskTitle: string) => {
-    if (isLoading) return;
-
-    setIsLoading(true);
-    toast({
-      title: "Breaking it down...",
-      description: "Getting smaller steps from the AI.",
-    });
-
-    try {
-      const result = await decomposeTask({
-        task: taskTitle,
-        userMood: mood,
-      });
-
-      if (!result || !result.subTasks || result.subTasks.length === 0) {
-        toast({
-          title: "Couldn't break down task",
-          description:
-            "The AI couldn't break this down further. Maybe it's small enough?",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const originalTaskIndex = tasks.findIndex((t) => t.id === taskId);
-      if (originalTaskIndex === -1) {
-        setIsLoading(false);
-        return;
-      }
-
-      const originalTask = tasks[originalTaskIndex];
-      let lastEndTime = new Date(originalTask.startTime);
-
-      const newSubTasks: Task[] = result.subTasks.map((subTask, index) => {
-        const startTime = new Date(lastEndTime.getTime());
-        lastEndTime = new Date(
-          lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
-        );
-
-        return {
-          id: `task_${Date.now()}_${index}`,
-          name: subTask.name,
-          durationEstimateMinutes: subTask.durationEstimateMinutes,
-          status: "pending",
-          startTime: startTime.toISOString(),
-          parentTaskTitle: taskTitle,
-          isFirstOfParent: index === 0,
-        };
-      });
-
-      const tasksBefore = tasks.slice(0, originalTaskIndex);
-      const tasksAfter = tasks.slice(originalTaskIndex + 1);
-
-      let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
-
-      const updatedTasksAfter = tasksAfter.map((task) => {
-        const newStartTime = new Date(nextTaskStartTime.getTime());
-        nextTaskStartTime = new Date(
-          nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
-        );
-        return { ...task, startTime: newStartTime.toISOString() };
-      });
-
-      const newTaskList = [
-        ...tasksBefore,
-        ...newSubTasks,
-        ...updatedTasksAfter,
-      ];
-      setTasks(newTaskList);
-
-      if (newSubTasks.length > 0) {
-        setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(
-            `item-${newSubTasks[0].id}`
-          );
-          if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          }
-        }, 300);
-      }
-
-      toast({
-        title: "Task Broken Down",
-        description: "I've replaced the task with smaller steps.",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description: "Could not break down task. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUpdateTaskStatus = async (
-    taskId: string,
-    status: "completed" | "missed"
-  ) => {
-    let updatedTasks = tasks.map((task) =>
-      task.id === taskId ? { ...task, status } : task
-    );
-    setTasks(updatedTasks);
-
-    if (status === "completed") {
-      toast({
-        title: "Great job!",
-        description: "One more task done. Keep it up!",
-      });
-    }
-
-    if (status === "missed") {
-      setIsLoading(true);
-      toast({
-        title: "Adjusting your schedule...",
-        description: "It's okay, let's figure out a new plan.",
-      });
-      try {
-        const result = await adjustSchedule({
-          currentSchedule: JSON.stringify(updatedTasks),
-          missedTasks: JSON.stringify([tasks.find((t) => t.id === taskId)]),
-          userMood: mood,
-        });
-
-        updatedTasks = JSON.parse(result.rescheduledSchedule);
-        setTasks(updatedTasks);
-
-        toast({
-          title: "Schedule Adjusted",
-          description: result.message,
-        });
-      } catch (error) {
-        console.error(error);
-        toast({
-          title: "Error",
-          description: "Could not adjust your schedule. Please adjust manually.",
-          variant: "destructive",
-        });
-        // Revert optimistic update on error
-        setTasks(tasks);
-      }
-      setIsLoading(false);
-    }
-
-    // Check for daily summary
-    const allTasksDone = updatedTasks.every((t) => t.status !== "pending");
-    if (allTasksDone && updatedTasks.length > 0 && !dailySummary) {
-      setIsLoading(true);
-      try {
-        const result = await getDailySummary({
-          tasks: JSON.stringify(updatedTasks),
-        });
-        setDailySummary(result.summary);
-      } catch (error) {
-        console.error("Failed to get daily summary:", error);
-        setDailySummary(
-          "You've completed all your tasks for the day. Great job!"
-        );
-      }
-      setIsLoading(false);
-    }
-  };
-
-  const handleResetDay = () => {
-    setTasks([]);
-    setDailySummary(null);
-    setMindfulSuggestion(null);
-    setMood("neutral");
-    setViewMode("timeline");
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (!over) {
-      return;
-    }
-
-    if (active.id !== over.id) {
-      setTasks((currentTasks) => {
-        const oldIndex = currentTasks.findIndex((t) => t.id === active.id);
-        const newIndex = currentTasks.findIndex((t) => t.id === over.id);
-
-        if (oldIndex === -1 || newIndex === -1) {
-          return currentTasks; // Should not happen
-        }
-
-        const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
-
-        // Now, recalculate start times to ensure chronological order
-        if (reorderedTasks.length === 0) return [];
-
-        // Anchor the schedule to the start time of the first task in the original list
-        const scheduleStartTime = new Date(currentTasks[0].startTime);
-        let nextStartTime = scheduleStartTime;
-
-        const finalSchedule = reorderedTasks.map((task) => {
-          const currentTaskStartTime = new Date(nextStartTime.getTime());
-          nextStartTime = new Date(
-            currentTaskStartTime.getTime() +
-              task.durationEstimateMinutes * 60000
-          );
-          return {
-            ...task,
-            startTime: currentTaskStartTime.toISOString(),
-          };
-        });
-
-        return finalSchedule;
-      });
-
-      toast({
-        title: "Schedule Updated",
-        description: "Your tasks have been rearranged.",
-      });
-    }
-  };
-
-
-  const currentTask = useMemo(
-    () => tasks.find((task) => task.status === "pending"),
-    [tasks]
-  );
-
-  const welcomeContent = (
-    <div className="flex flex-col items-center justify-center text-center p-8 h-full">
-      <AdaptiPlanLogo className="w-24 h-24 mb-6 text-primary" />
-      <h2 className="text-3xl font-bold mb-2 font-headline">
-        Welcome to AdaptiPlan
-      </h2>
-      <p className="text-muted-foreground max-w-md">
-        Start by telling me a large task you want to accomplish. For example,
-        &quot;clean my apartment&quot; or &quot;prepare for final exams&quot;.
-        I&apos;ll break it down into manageable steps for you.
-      </p>
-    </div>
-  );
-
-  const renderMainContent = () => {
-    if (dailySummary) {
-      return (
-        <DailySummaryView summary={dailySummary} onReset={handleResetDay} />
-      );
-    }
-
-    if (tasks.length === 0 && !isLoading) {
-      return (
-        <Card className="flex-grow flex items-center justify-center">
-          <CardContent className="p-0">{welcomeContent}</CardContent>
-        </Card>
-      );
-    }
-
-    if (viewMode === "timeline") {
-      return (
-        <TimelineView
-          tasks={tasks}
-          onUpdateTaskStatus={handleUpdateTaskStatus}
-          onBreakDownTask={handleBreakDownTask}
-          isLoading={isLoading}
-          onDragEnd={handleDragEnd}
-        />
-      );
-    }
-
-    return (
-      <FocusView task={currentTask} onUpdateTaskStatus={handleUpdateTaskStatus} />
-    );
-  };
-
+export default function LandingPage() {
   return (
-    <div className="flex flex-col min-h-screen">
-      <AppHeader
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        mood={mood}
-        setMood={handleSetMood}
-      />
-      <main className="flex-grow container mx-auto p-4 flex flex-col gap-6">
-        {!dailySummary && (
-          <TaskInputForm onSubmit={handleAddTask} isLoading={isLoading} />
-        )}
+    <div className="flex flex-col min-h-screen bg-background">
+      {/* Header */}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <AdaptiPlanLogo className="h-8 w-8 text-primary" />
+            <h1 className="text-2xl font-bold font-headline">AdaptiPlan</h1>
+          </Link>
+          <Button asChild>
+            <Link href="/app">
+              Get Started <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </header>
 
-        {mindfulSuggestion && (
-          <MindfulMomentAlert
-            suggestion={mindfulSuggestion}
-            onDismiss={() => setMindfulSuggestion(null)}
-          />
-        )}
+      {/* Main Content */}
+      <main className="flex-grow">
+        {/* Hero Section */}
+        <section className="container mx-auto flex flex-col items-center justify-center px-4 py-20 text-center sm:py-32">
+          <h2 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl font-headline">
+            The smarter way to plan your day.
+          </h2>
+          <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
+            AdaptiPlan is an intelligent planner that breaks down your overwhelming tasks, adapts to your mood, and helps you build better habits, one step at a time.
+          </p>
+          <div className="mt-10">
+            <Button size="lg" asChild>
+              <Link href="/app">
+                Start Planning for Free
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Link>
+            </Button>
+          </div>
+        </section>
 
-        {renderMainContent()}
+        {/* Features Section */}
+        <section className="bg-secondary py-20 sm:py-24">
+          <div className="container mx-auto px-4">
+            <div className="mx-auto max-w-2xl text-center">
+                <h3 className="text-3xl font-bold font-headline">A Planner That Understands You</h3>
+                <p className="mt-4 text-muted-foreground">
+                    AdaptiPlan isn't just a to-do list. It's an AI partner that helps you navigate your day with less stress and more focus.
+                </p>
+            </div>
+            <div className="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
+              <Card>
+                <CardHeader className="items-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Wand2 className="h-6 w-6" />
+                  </div>
+                  <CardTitle>Smart Task Decomposition</CardTitle>
+                </CardHeader>
+                <CardContent className="text-center text-muted-foreground">
+                  Feeling overwhelmed? Just enter a big task, and our AI will break it down into small, manageable steps for you.
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="items-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <CalendarClock className="h-6 w-6" />
+                  </div>
+                   <CardTitle>Adaptive Scheduling</CardTitle>
+                </CardHeader>
+                <CardContent className="text-center text-muted-foreground">
+                  Life happens. If you miss a task, our AI will non-judgmentally help you reschedule and adjust your day.
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="items-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <Lightbulb className="h-6 w-6" />
+                    </div>
+                  <CardTitle>Mindful Moments</CardTitle>
+                </CardHeader>
+                <CardContent className="text-center text-muted-foreground">
+                  Feeling stressed? AdaptiPlan can offer you short, actionable mindfulness suggestions to help you reset.
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </section>
       </main>
+
+      {/* Footer */}
       <footer className="text-center p-4 text-xs text-muted-foreground">
         <p>AdaptiPlan by Firebase Studio</p>
       </footer>
