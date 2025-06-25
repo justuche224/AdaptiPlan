@@ -17,6 +17,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { AdaptiPlanLogo } from "@/components/icons";
 import { MindfulMomentAlert } from "@/components/mindful-moment-alert";
 import { DailySummaryView } from "@/components/daily-summary-view";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { arrayMove } from "@dnd-kit/sortable";
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -301,6 +303,53 @@ export default function Home() {
     setViewMode("timeline");
   };
 
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over) {
+      return;
+    }
+
+    if (active.id !== over.id) {
+      setTasks((currentTasks) => {
+        const oldIndex = currentTasks.findIndex((t) => t.id === active.id);
+        const newIndex = currentTasks.findIndex((t) => t.id === over.id);
+
+        if (oldIndex === -1 || newIndex === -1) {
+          return currentTasks; // Should not happen
+        }
+
+        const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
+
+        // Now, recalculate start times to ensure chronological order
+        if (reorderedTasks.length === 0) return [];
+
+        // Anchor the schedule to the start time of the first task in the original list
+        const scheduleStartTime = new Date(currentTasks[0].startTime);
+        let nextStartTime = scheduleStartTime;
+
+        const finalSchedule = reorderedTasks.map((task) => {
+          const currentTaskStartTime = new Date(nextStartTime.getTime());
+          nextStartTime = new Date(
+            currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
+          );
+          return {
+            ...task,
+            startTime: currentTaskStartTime.toISOString(),
+          };
+        });
+
+        toast({
+          title: "Schedule Updated",
+          description: "Your tasks have been rearranged.",
+        });
+
+        return finalSchedule;
+      });
+    }
+  };
+
+
   const currentTask = useMemo(
     () => tasks.find((task) => task.status === "pending"),
     [tasks]
@@ -342,6 +391,7 @@ export default function Home() {
           onUpdateTaskStatus={handleUpdateTaskStatus}
           onBreakDownTask={handleBreakDownTask}
           isLoading={isLoading}
+          onDragEnd={handleDragEnd}
         />
       );
     }

@@ -3,13 +3,30 @@
 import type { Task } from "@/lib/types";
 import { TaskCard } from "@/components/task-card";
 import { Coffee, FileText, CalendarDays } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import React, { useMemo } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface TimelineViewProps {
   tasks: Task[];
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
   onBreakDownTask: (taskId: string, taskTitle: string) => void;
   isLoading: boolean;
+  onDragEnd: (event: DragEndEvent) => void;
 }
 
 const BREAK_DURATION = 15; // 15 minutes
@@ -21,10 +38,55 @@ type TimelineItem =
   | { type: "header"; data: { id: string; title: string } }
   | { type: "day_separator"; data: { id: string; date: string } };
 
-export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoading }: TimelineViewProps) {
+function SortableTaskWrapper({
+  task,
+  onUpdateStatus,
+  onBreakDown,
+  isLoading,
+}: {
+  task: Task;
+  onUpdateStatus: (taskId: string, status: "completed" | "missed") => void;
+  onBreakDown: (taskId: string, taskTitle: string) => void;
+  isLoading: boolean;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : 'auto'
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <TaskCard
+        task={task}
+        onUpdateStatus={onUpdateStatus}
+        onBreakDown={onBreakDown}
+        isLoading={isLoading}
+      />
+    </div>
+  );
+}
+
+export function TimelineView({
+  tasks,
+  onUpdateTaskStatus,
+  onBreakDownTask,
+  isLoading,
+  onDragEnd,
+}: TimelineViewProps) {
   let accumulatedWorkTime = 0;
   const items: TimelineItem[] = [];
-  
+
   let currentDay: string | null = null;
 
   for (const task of tasks) {
@@ -32,14 +94,18 @@ export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoa
     const taskDayString = taskDate.toDateString();
 
     if (taskDayString !== currentDay) {
-        currentDay = taskDayString;
-        items.push({
-            type: "day_separator",
-            data: {
-                id: `day_${taskDayString.replace(/\s/g, '_')}`,
-                date: taskDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-            }
-        });
+      currentDay = taskDayString;
+      items.push({
+        type: "day_separator",
+        data: {
+          id: `day_${taskDayString.replace(/\s/g, "_")}`,
+          date: taskDate.toLocaleDateString(undefined, {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+          }),
+        },
+      });
     }
 
     if (task.isFirstOfParent && task.parentTaskTitle) {
@@ -67,55 +133,74 @@ export function TimelineView({ tasks, onUpdateTaskStatus, onBreakDownTask, isLoa
     }
   }
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const taskIds = useMemo(() => tasks.map((t) => t.id), [tasks]);
+
   return (
-    <div className="space-y-2">
-       <AnimatePresence>
-        {items.map((item) => (
-          <motion.div
-            key={item.data.id}
-            id={`item-${item.data.id}`}
-            layout
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-          >
-            {item.type === "day_separator" && (
-                <div className="pt-6 pb-2">
-                    <h2 className="flex items-center gap-3 text-xl font-bold text-foreground">
-                        <CalendarDays className="h-6 w-6 text-primary" />
-                        <span>{item.data.date}</span>
-                    </h2>
-                    <hr className="mt-2 border-border" />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={taskIds}
+        strategy={verticalListSortingStrategy}
+      >
+        <div className="space-y-2">
+          {items.map((item) => {
+            if (item.type === "task") {
+              return (
+                <SortableTaskWrapper
+                  key={item.data.id}
+                  task={item.data as Task}
+                  onUpdateStatus={onUpdateTaskStatus}
+                  onBreakDown={onBreakDownTask}
+                  isLoading={isLoading}
+                />
+              );
+            }
+            if (item.type === "day_separator") {
+              return (
+                <div key={item.data.id} className="pt-6 pb-2">
+                  <h2 className="flex items-center gap-3 text-xl font-bold text-foreground">
+                    <CalendarDays className="h-6 w-6 text-primary" />
+                    <span>{item.data.date}</span>
+                  </h2>
+                  <hr className="mt-2 border-border" />
                 </div>
-            )}
-            {item.type === "header" && (
-              <div className="pt-4 pb-1">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
+              );
+            }
+            if (item.type === "header") {
+              return (
+                <div key={item.data.id} className="pt-4 pb-1">
+                  <h3 className="flex items-center gap-2 text-lg font-semibold text-muted-foreground">
                     <FileText className="h-5 w-5" />
                     {item.data.title}
-                </h3>
-              </div>
-            )}
-            {item.type === "task" ? (
-              <TaskCard
-                task={item.data as Task}
-                onUpdateStatus={onUpdateTaskStatus}
-                onBreakDown={onBreakDownTask}
-                isLoading={isLoading}
-              />
-            ) : item.type === "break" ? (
-              <div className="flex items-center gap-4 pl-6">
-                <div className="h-full w-px bg-border" />
-                <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
-                  <Coffee className="h-4 w-4 text-accent" />
-                  <span>{(item.data as any).duration} min break</span>
+                  </h3>
                 </div>
-              </div>
-            ) : null}
-          </motion.div>
-        ))}
-       </AnimatePresence>
-    </div>
+              );
+            }
+            if (item.type === "break") {
+              return (
+                <div key={item.data.id} className="flex items-center gap-4 pl-6">
+                  <div className="h-full w-px bg-border" />
+                  <div className="flex items-center gap-2 text-muted-foreground text-sm py-2">
+                    <Coffee className="h-4 w-4 text-accent" />
+                    <span>{(item.data as any).duration} min break</span>
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          })}
+        </div>
+      </SortableContext>
+    </DndContext>
   );
 }
