@@ -40,12 +40,12 @@ type TimelineItem =
 
 function SortableTaskWrapper({
   task,
-  onUpdateStatus,
+  onUpdateTaskStatus,
   onBreakDown,
   isLoading,
 }: {
   task: Task;
-  onUpdateStatus: (taskId: string, status: "completed" | "missed") => void;
+  onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
   onBreakDown: (taskId: string, taskTitle: string) => void;
   isLoading: boolean;
 }) {
@@ -66,10 +66,10 @@ function SortableTaskWrapper({
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div id={`item-${task.id}`} ref={setNodeRef} style={style} {...attributes} {...listeners}>
       <TaskCard
         task={task}
-        onUpdateStatus={onUpdateStatus}
+        onUpdateStatus={onUpdateTaskStatus}
         onBreakDown={onBreakDown}
         isLoading={isLoading}
       />
@@ -181,7 +181,7 @@ export function TimelineView({
                 <SortableTaskWrapper
                   key={item.data.id}
                   task={item.data as Task}
-                  onUpdateStatus={onUpdateTaskStatus}
+                  onUpdateTaskStatus={onUpdateTaskStatus}
                   onBreakDown={onBreakDownTask}
                   isLoading={isLoading}
                 />
