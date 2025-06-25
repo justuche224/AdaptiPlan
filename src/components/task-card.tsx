@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import type { Task } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -67,7 +68,10 @@ export function TaskCard({ task, onUpdateStatus, onBreakDown, isLoading }: TaskC
                     size="icon"
                     variant="outline"
                     className="h-9 w-9 rounded-full border-primary/50 text-primary/80 hover:bg-primary/10 hover:text-primary"
-                    onClick={() => onBreakDown(task.id, task.name)}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.stopPropagation();
+                        onBreakDown(task.id, task.name);
+                    }}
                     aria-label={`Break down task '${task.name}'`}
                     disabled={isLoading}
                     >
@@ -77,7 +81,10 @@ export function TaskCard({ task, onUpdateStatus, onBreakDown, isLoading }: TaskC
                     size="icon"
                     variant="outline"
                     className="h-9 w-9 rounded-full border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-400"
-                    onClick={() => onUpdateStatus(task.id, "completed")}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.stopPropagation();
+                        onUpdateStatus(task.id, "completed");
+                    }}
                     aria-label={`Mark task '${task.name}' as completed`}
                     disabled={isLoading}
                     >
@@ -87,7 +94,10 @@ export function TaskCard({ task, onUpdateStatus, onBreakDown, isLoading }: TaskC
                     size="icon"
                     variant="outline"
                     className="h-9 w-9 rounded-full border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-400"
-                    onClick={() => onUpdateStatus(task.id, "missed")}
+                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
+                        e.stopPropagation();
+                        onUpdateStatus(task.id, "missed");
+                    }}
                     aria-label={`Mark task '${task.name}' as missed`}
                     disabled={isLoading}
                     >
