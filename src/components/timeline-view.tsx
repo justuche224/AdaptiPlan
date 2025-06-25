@@ -181,7 +181,7 @@ export function TimelineView({
                 <SortableTaskWrapper
                   key={item.data.id}
                   task={item.data as Task}
-                  onUpdateStatus={onUpdateStatus}
+                  onUpdateStatus={onUpdateTaskStatus}
                   onBreakDown={onBreakDownTask}
                   isLoading={isLoading}
                 />
