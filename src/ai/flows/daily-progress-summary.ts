@@ -28,6 +28,8 @@ const DailyProgressSummaryOutputSchema = z.object({
     .describe(
       "A positive and encouraging summary of the day's accomplishments."
     ),
+  completedCount: z.number().describe('The total number of completed tasks.'),
+  missedCount: z.number().describe('The total number of missed tasks.'),
 });
 export type DailyProgressSummaryOutput = z.infer<
   typeof DailyProgressSummaryOutputSchema
@@ -45,12 +47,11 @@ const prompt = ai.definePrompt({
   output: {schema: DailyProgressSummaryOutputSchema},
   prompt: `You are a friendly and encouraging productivity coach. The user has finished their tasks for the day.
   
-  Based on the following list of tasks, generate a short (2-3 sentences) summary of their progress.
+  Based on the following list of tasks, generate a short (2-3 sentences) summary of their progress and provide a count of completed and missed tasks.
   
-  - Count the number of completed tasks.
-  - Calculate the total time (in minutes) for the completed tasks.
-  - Be positive and focus on what was accomplished, even if some tasks were missed.
-  - End with an encouraging sentence about resting or the next day.
+  - The summary should be positive and focus on what was accomplished, even if some tasks were missed. End with an encouraging sentence about resting or the next day.
+  - Count the number of tasks with a status of 'completed'.
+  - Count the number of tasks with a status of 'missed'.
   
   Tasks: {{{tasks}}}
   `,

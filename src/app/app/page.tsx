@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import type { Task } from "@/lib/types";
+import type { Task, DailySummaryData } from "@/lib/types";
 import {
   decomposeTask,
   adjustSchedule,
@@ -26,7 +26,8 @@ export default function AppPage() {
   const [mindfulSuggestion, setMindfulSuggestion] = useState<string | null>(
     null
   );
-  const [dailySummary, setDailySummary] = useState<string | null>(null);
+  const [dailySummaryData, setDailySummaryData] =
+    useState<DailySummaryData | null>(null);
   const { toast } = useToast();
 
   const handleSetMood = useCallback(async (newMood: string) => {
@@ -276,18 +277,21 @@ export default function AppPage() {
 
     // Check for daily summary
     const allTasksDone = updatedTasks.every((t) => t.status !== "pending");
-    if (allTasksDone && updatedTasks.length > 0 && !dailySummary) {
+    if (allTasksDone && updatedTasks.length > 0 && !dailySummaryData) {
       setIsLoading(true);
       try {
         const result = await getDailySummary({
           tasks: JSON.stringify(updatedTasks),
         });
-        setDailySummary(result.summary);
+        setDailySummaryData(result);
       } catch (error) {
         console.error("Failed to get daily summary:", error);
-        setDailySummary(
-          "You've completed all your tasks for the day. Great job!"
-        );
+        setDailySummaryData({
+          summary:
+            "You've completed all your tasks for the day. Great job!",
+          completedCount: updatedTasks.filter(t => t.status === 'completed').length,
+          missedCount: updatedTasks.filter(t => t.status === 'missed').length,
+        });
       }
       setIsLoading(false);
     }
@@ -295,7 +299,7 @@ export default function AppPage() {
 
   const handleResetDay = () => {
     setTasks([]);
-    setDailySummary(null);
+    setDailySummaryData(null);
     setMindfulSuggestion(null);
     setMood("neutral");
     setViewMode("timeline");
@@ -309,24 +313,22 @@ export default function AppPage() {
     }
 
     if (active.id !== over.id) {
-      setTasks((currentTasks) => {
-        const oldIndex = currentTasks.findIndex((t) => t.id === active.id);
-        const newIndex = currentTasks.findIndex((t) => t.id === over.id);
+      const reorderedTasks = (() => {
+        const oldIndex = tasks.findIndex((t) => t.id === active.id);
+        const newIndex = tasks.findIndex((t) => t.id === over.id);
 
         if (oldIndex === -1 || newIndex === -1) {
-          return currentTasks; // Should not happen
+          return tasks;
         }
 
-        const reorderedTasks = arrayMove(currentTasks, oldIndex, newIndex);
+        const reordered = arrayMove(tasks, oldIndex, newIndex);
 
-        // Now, recalculate start times to ensure chronological order
-        if (reorderedTasks.length === 0) return [];
+        if (reordered.length === 0) return [];
 
-        // Anchor the schedule to the start time of the first task in the original list
-        const scheduleStartTime = new Date(currentTasks[0].startTime);
+        const scheduleStartTime = new Date(tasks[0].startTime);
         let nextStartTime = scheduleStartTime;
 
-        const finalSchedule = reorderedTasks.map((task) => {
+        return reordered.map((task) => {
           const currentTaskStartTime = new Date(nextStartTime.getTime());
           nextStartTime = new Date(
             currentTaskStartTime.getTime() +
@@ -337,9 +339,9 @@ export default function AppPage() {
             startTime: currentTaskStartTime.toISOString(),
           };
         });
+      })();
 
-        return finalSchedule;
-      });
+      setTasks(reorderedTasks);
 
       toast({
         title: "Schedule Updated",
@@ -355,9 +357,9 @@ export default function AppPage() {
   );
 
   const renderMainContent = () => {
-    if (dailySummary) {
+    if (dailySummaryData) {
       return (
-        <DailySummaryView summary={dailySummary} onReset={handleResetDay} />
+        <DailySummaryView summaryData={dailySummaryData} onReset={handleResetDay} />
       );
     }
 
@@ -387,7 +389,7 @@ export default function AppPage() {
         setMood={handleSetMood}
       />
       <main className="flex-grow container mx-auto p-4 flex flex-col gap-6">
-        {!dailySummary && (
+        {!dailySummaryData && (
           <TaskInputForm onSubmit={handleAddTask} isLoading={isLoading} />
         )}
 

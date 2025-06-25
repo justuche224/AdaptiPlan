@@ -7,3 +7,9 @@ export interface Task {
   parentTaskTitle?: string;
   isFirstOfParent?: boolean;
 }
+
+export interface DailySummaryData {
+  summary: string;
+  completedCount: number;
+  missedCount: number;
+}
