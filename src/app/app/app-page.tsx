@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useTransition, useOptimistic } from "react";
 import type { Task, DailySummaryData } from "@/lib/types";
 import {
-  decomposeTask,
-  adjustSchedule,
+  addTaskAndDecompose,
+  updateTaskStatus,
   getMindfulMoment,
   getDailySummary,
+  reorderTasks,
+  clearAllTasks,
 } from "@/app/actions";
 import { useToast } from "@/hooks/use-toast";
 import { AppHeader } from "@/components/app-header";
@@ -18,11 +20,17 @@ import { DailySummaryView } from "@/components/daily-summary-view";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 
-export default function AppPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+export default function AppPage({ initialTasks }: { initialTasks: Task[] }) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [optimisticTasks, setOptimisticTasks] = useOptimistic(
+    tasks,
+    (state, newTasks: Task[]) => newTasks
+  );
+
   const [mood, setMood] = useState("neutral");
   const [viewMode, setViewMode] = useState<"timeline" | "focus">("timeline");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, startTransition] = useTransition();
+
   const [mindfulSuggestion, setMindfulSuggestion] = useState<string | null>(
     null
   );
@@ -47,313 +55,152 @@ export default function AppPage() {
   }, []);
 
   const handleAddTask = async (taskTitle: string) => {
-    if (!taskTitle.trim()) return;
-    setIsLoading(true);
-    try {
-      const result = await decomposeTask({
-        task: taskTitle,
-        userMood: mood,
-      });
+    if (!taskTitle.trim() || isLoading) return;
 
-      if (!result || result.subTasks.length === 0) {
-        toast({
-          title: "No sub-tasks generated",
-          description:
-            "The AI couldn't break down the task. Please try a different wording.",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      let lastEndTime = new Date();
-      if (tasks.length > 0) {
-        const lastTask = tasks[tasks.length - 1];
-        lastEndTime = new Date(
-          new Date(lastTask.startTime).getTime() +
-            lastTask.durationEstimateMinutes * 60000
-        );
-        lastEndTime = new Date(lastEndTime.getTime() + 5 * 60000); // 5 min buffer
-      }
-
-      const newTasks: Task[] = result.subTasks.map((subTask, index) => {
-        const startTime = new Date(lastEndTime.getTime());
-        lastEndTime = new Date(
-          lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
-        );
-
-        return {
-          id: `task_${Date.now()}_${index}`,
-          name: subTask.name,
-          durationEstimateMinutes: subTask.durationEstimateMinutes,
-          status: "pending",
-          startTime: startTime.toISOString(),
-          parentTaskTitle: taskTitle,
-          isFirstOfParent: index === 0,
-        };
-      });
-
-      setTasks((prevTasks) => [...prevTasks, ...newTasks]);
-
-      if (newTasks.length > 0) {
-        setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(
-            `item-${newTasks[0].id}`
-          );
-          if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          }
-        }, 300);
-      }
-
-      toast({
-        title: "Tasks Added",
-        description: "Your new tasks are on the timeline.",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description: "Could not break down task. Please try again.",
-        variant: "destructive",
-      });
-    }
-    setIsLoading(false);
-  };
-
-  const handleBreakDownTask = async (taskId: string, taskTitle: string) => {
-    if (isLoading) return;
-
-    setIsLoading(true);
-    toast({
-      title: "Breaking it down...",
-      description: "Getting smaller steps from the AI.",
-    });
-
-    try {
-      const result = await decomposeTask({
-        task: taskTitle,
-        userMood: mood,
-      });
-
-      if (!result || !result.subTasks || result.subTasks.length === 0) {
-        toast({
-          title: "Couldn't break down task",
-          description:
-            "The AI couldn't break this down further. Maybe it's small enough?",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      const originalTaskIndex = tasks.findIndex((t) => t.id === taskId);
-      if (originalTaskIndex === -1) {
-        setIsLoading(false);
-        return;
-      }
-
-      const originalTask = tasks[originalTaskIndex];
-      let lastEndTime = new Date(originalTask.startTime);
-
-      const newSubTasks: Task[] = result.subTasks.map((subTask, index) => {
-        const startTime = new Date(lastEndTime.getTime());
-        lastEndTime = new Date(
-          lastEndTime.getTime() + subTask.durationEstimateMinutes * 60000
-        );
-
-        return {
-          id: `task_${Date.now()}_${index}`,
-          name: subTask.name,
-          durationEstimateMinutes: subTask.durationEstimateMinutes,
-          status: "pending",
-          startTime: startTime.toISOString(),
-          parentTaskTitle: taskTitle,
-          isFirstOfParent: index === 0,
-        };
-      });
-
-      const tasksBefore = tasks.slice(0, originalTaskIndex);
-      const tasksAfter = tasks.slice(originalTaskIndex + 1);
-
-      let nextTaskStartTime = new Date(lastEndTime.getTime() + 5 * 60000); // Add buffer
-
-      const updatedTasksAfter = tasksAfter.map((task) => {
-        const newStartTime = new Date(nextTaskStartTime.getTime());
-        nextTaskStartTime = new Date(
-          nextTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
-        );
-        return { ...task, startTime: newStartTime.toISOString() };
-      });
-
-      const newTaskList = [
-        ...tasksBefore,
-        ...newSubTasks,
-        ...updatedTasksAfter,
-      ];
-      setTasks(newTaskList);
-
-      if (newSubTasks.length > 0) {
-        setTimeout(() => {
-          const firstNewTaskEl = document.getElementById(
-            `item-${newSubTasks[0].id}`
-          );
-          if (firstNewTaskEl) {
-            firstNewTaskEl.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          }
-        }, 300);
-      }
-
-      toast({
-        title: "Task Broken Down",
-        description: "I've replaced the task with smaller steps.",
-      });
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: "Error",
-        description: "Could not break down task. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUpdateTaskStatus = async (
-    taskId: string,
-    status: "completed" | "missed"
-  ) => {
-    let updatedTasks = tasks.map((task) =>
-      task.id === taskId ? { ...task, status } : task
-    );
-    setTasks(updatedTasks);
-
-    if (status === "completed") {
-      toast({
-        title: "Great job!",
-        description: "One more task done. Keep it up!",
-      });
-    }
-
-    if (status === "missed") {
-      setIsLoading(true);
-      toast({
-        title: "Adjusting your schedule...",
-        description: "It's okay, let's figure out a new plan.",
-      });
+    startTransition(async () => {
       try {
-        const result = await adjustSchedule({
-          currentSchedule: JSON.stringify(updatedTasks),
-          missedTasks: JSON.stringify([tasks.find((t) => t.id === taskId)]),
-          userMood: mood,
-        });
+        const newTasks = await addTaskAndDecompose(taskTitle, mood);
+        setTasks((prev) => [...prev, ...newTasks]);
 
-        updatedTasks = JSON.parse(result.rescheduledSchedule);
-        setTasks(updatedTasks);
+        if (newTasks.length > 0) {
+          setTimeout(() => {
+            const firstNewTaskEl = document.getElementById(
+              `item-${newTasks[0].id}`
+            );
+            if (firstNewTaskEl) {
+              firstNewTaskEl.scrollIntoView({
+                behavior: "smooth",
+                block: "center",
+              });
+            }
+          }, 300);
+        }
 
         toast({
-          title: "Schedule Adjusted",
-          description: result.message,
+          title: "Tasks Added",
+          description: "Your new tasks are on the timeline.",
         });
       } catch (error) {
         console.error(error);
         toast({
           title: "Error",
-          description: "Could not adjust your schedule. Please adjust manually.",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Could not break down task. Please try again.",
           variant: "destructive",
         });
-        // Revert optimistic update on error
-        setTasks(tasks);
       }
-      setIsLoading(false);
-    }
+    });
+  };
 
-    // Check for daily summary
-    const allTasksDone = updatedTasks.every((t) => t.status !== "pending");
-    if (allTasksDone && updatedTasks.length > 0 && !dailySummaryData) {
-      setIsLoading(true);
+  const handleBreakDownTask = async (taskId: string, taskTitle: string) => {
+    // This functionality is now part of initial task creation.
+    // For simplicity, we'll suggest breaking down tasks from the input form.
+    toast({
+      title: "Feature Update",
+      description: "To break down a task, please add it as a new item.",
+    });
+  };
+
+  const handleUpdateTaskStatus = (
+    taskId: string,
+    status: "completed" | "missed"
+  ) => {
+    startTransition(async () => {
+      const newOptimisticTasks = tasks.map((t) =>
+        t.id === taskId ? { ...t, status } : t
+      );
+      setOptimisticTasks(newOptimisticTasks);
+
       try {
-        const result = await getDailySummary({
-          tasks: JSON.stringify(updatedTasks),
-        });
-        setDailySummaryData(result);
+        await updateTaskStatus(taskId, status);
+        // The revalidation from the server action will update the `tasks` state
       } catch (error) {
-        console.error("Failed to get daily summary:", error);
-        setDailySummaryData({
-          summary:
-            "You've completed all your tasks for the day. Great job!",
-          completedCount: updatedTasks.filter(t => t.status === 'completed').length,
-          missedCount: updatedTasks.filter(t => t.status === 'missed').length,
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "Could not update task status.",
+          variant: "destructive",
         });
+        // Revert optimistic update by setting it back to original state
+        setOptimisticTasks(tasks);
       }
-      setIsLoading(false);
-    }
+
+       // Check for daily summary
+      const allTasksDone = newOptimisticTasks.every((t) => t.status !== "pending");
+      if (allTasksDone && newOptimisticTasks.length > 0 && !dailySummaryData) {
+        try {
+          const result = await getDailySummary({
+            tasks: JSON.stringify(newOptimisticTasks),
+          });
+          setDailySummaryData(result);
+        } catch (error) {
+          console.error("Failed to get daily summary:", error);
+          setDailySummaryData({
+            summary:
+              "You've completed all your tasks for the day. Great job!",
+            completedCount: newOptimisticTasks.filter(t => t.status === 'completed').length,
+            missedCount: newOptimisticTasks.filter(t => t.status === 'missed').length,
+          });
+        }
+      }
+    });
   };
 
   const handleResetDay = () => {
-    setTasks([]);
-    setDailySummaryData(null);
-    setMindfulSuggestion(null);
-    setMood("neutral");
-    setViewMode("timeline");
+    startTransition(async () => {
+        setDailySummaryData(null);
+        setMindfulSuggestion(null);
+        setMood("neutral");
+        setViewMode("timeline");
+        try {
+            await clearAllTasks();
+            setTasks([]);
+        } catch (error) {
+            console.error(error);
+            toast({
+                title: "Error",
+                description: "Could not clear tasks. Please refresh the page.",
+                variant: "destructive"
+            });
+        }
+    });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    if (!over || active.id === over.id) return;
 
-    if (!over) {
-      return;
-    }
+    const oldIndex = tasks.findIndex((t) => t.id === active.id);
+    const newIndex = tasks.findIndex((t) => t.id === over.id);
+    const reorderedTasks = arrayMove(tasks, oldIndex, newIndex);
 
-    if (active.id !== over.id) {
-      const reorderedTasks = (() => {
-        const oldIndex = tasks.findIndex((t) => t.id === active.id);
-        const newIndex = tasks.findIndex((t) => t.id === over.id);
+    setOptimisticTasks(reorderedTasks);
 
-        if (oldIndex === -1 || newIndex === -1) {
-          return tasks;
-        }
-
-        const reordered = arrayMove(tasks, oldIndex, newIndex);
-
-        if (reordered.length === 0) return [];
-
-        const scheduleStartTime = new Date(tasks[0].startTime);
-        let nextStartTime = scheduleStartTime;
-
-        return reordered.map((task) => {
-          const currentTaskStartTime = new Date(nextStartTime.getTime());
-          nextStartTime = new Date(
-            currentTaskStartTime.getTime() +
-              task.durationEstimateMinutes * 60000
-          );
-          return {
-            ...task,
-            startTime: currentTaskStartTime.toISOString(),
-          };
+    startTransition(async () => {
+      try {
+        await reorderTasks(reorderedTasks.map((t) => t.id));
+        toast({
+          title: "Schedule Updated",
+          description: "Your tasks have been rearranged.",
         });
-      })();
-
-      setTasks(reorderedTasks);
-
-      toast({
-        title: "Schedule Updated",
-        description: "Your tasks have been rearranged.",
-      });
-    }
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "Could not save the new order.",
+          variant: "destructive",
+        });
+        setOptimisticTasks(tasks);
+      }
+    });
   };
 
 
   const currentTask = useMemo(
-    () => tasks.find((task) => task.status === "pending"),
-    [tasks]
+    () => optimisticTasks.find((task) => task.status === "pending"),
+    [optimisticTasks]
   );
 
   const renderMainContent = () => {
@@ -366,7 +213,7 @@ export default function AppPage() {
     if (viewMode === "timeline") {
       return (
         <TimelineView
-          tasks={tasks}
+          tasks={optimisticTasks}
           onUpdateTaskStatus={handleUpdateTaskStatus}
           onBreakDownTask={handleBreakDownTask}
           isLoading={isLoading}

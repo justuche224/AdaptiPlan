@@ -1,5 +1,5 @@
 export interface Task {
-  id: string;
+  id: string; // This will be the publicId from the database
   name: string;
   durationEstimateMinutes: number;
   status: 'pending' | 'completed' | 'missed';

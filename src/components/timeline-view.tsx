@@ -135,8 +135,6 @@ export function TimelineView({
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // Require the pointer to move by 8 pixels before activating
-      // This prevents click events from being interpreted as drags
       activationConstraint: {
         distance: 8,
       },
@@ -144,20 +142,13 @@ export function TimelineView({
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
       onActivation: (event) => {
-        // Do not activate drag on interactive elements
         if (
           event.target instanceof HTMLElement &&
           (event.target.closest("button") || event.target.closest("a"))
         ) {
           return false;
         }
-
-        // Default activation for keyboard sensor
-        if (event.code === "Enter" || event.code === "Space") {
-          return true;
-        }
-
-        return false;
+        return true;
       },
     })
   );
