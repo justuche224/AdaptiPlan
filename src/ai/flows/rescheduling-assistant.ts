@@ -11,7 +11,7 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
-export const ReschedulingOptionsInputSchema = z.object({
+const ReschedulingOptionsInputSchema = z.object({
   currentSchedule: z
     .string()
     .describe('The current schedule as a JSON string of Task objects.'),
@@ -31,7 +31,7 @@ const RescheduleOptionSchema = z.object({
     .describe('The entire new schedule as a JSON string.'),
 });
 
-export const ReschedulingOptionsOutputSchema = z.object({
+const ReschedulingOptionsOutputSchema = z.object({
   options: z
     .array(RescheduleOptionSchema)
     .describe('An array of 2-3 rescheduling suggestions.'),
