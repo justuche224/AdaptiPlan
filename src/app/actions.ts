@@ -222,7 +222,6 @@ export async function breakDownTask(taskId: string) {
       where: and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)),
     });
     if (!originalTask) throw new Error("Task to break down not found.");
-    if (originalTask.parentTaskTitle) throw new Error("Cannot break down a sub-task.");
     
     // 2. Call AI
     const aiResult = await smartTaskDecomposition({ task: originalTask.name, userMood: 'neutral' });
@@ -271,8 +270,11 @@ export async function breakDownTask(taskId: string) {
             durationEstimateMinutes: subTask.durationEstimateMinutes,
             status: "pending" as const,
             startTime,
-            parentTaskTitle: originalTask.name,
-            isFirstOfParent: index === 0,
+            // If the original task had a parent, the new tasks inherit it.
+            // Otherwise, the original task's name becomes the parent title.
+            parentTaskTitle: originalTask.parentTaskTitle ?? originalTask.name,
+            // The first new sub-task becomes the "first of parent" ONLY IF the original task was.
+            isFirstOfParent: index === 0 && (originalTask.isFirstOfParent || !originalTask.parentTaskTitle),
             sortOrder: originalTask.sortOrder + index,
         };
     });

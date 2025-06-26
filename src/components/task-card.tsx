@@ -49,7 +49,6 @@ export function TaskCard({
   };
 
   const isPending = task.status === "pending";
-  const canBreakDown = !task.parentTaskTitle?.trim();
 
   const handleButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -94,7 +93,6 @@ export function TaskCard({
           <div className="w-full sm:w-auto pt-4 sm:pt-0">
             {isPending && (
               <div className="flex gap-2 justify-end">
-                {canBreakDown && (
                   <Button
                     size="icon"
                     variant="outline"
@@ -108,7 +106,6 @@ export function TaskCard({
                   >
                     <Wand2 className="h-4 w-4" />
                   </Button>
-                )}
                 <Button
                   size="icon"
                   variant="outline"
