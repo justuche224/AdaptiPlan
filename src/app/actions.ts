@@ -1,3 +1,4 @@
+
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -244,12 +245,12 @@ export async function updateTask(
   return updatedTasks;
 }
 
-export async function breakDownTask(taskId: string) {
+export async function breakDownTask(taskId: string): Promise<Task[]> {
   const userId = await getUserId();
 
   await db.transaction(async (tx) => {
     // 1. Find the task to break down
-    const originalTask = await db
+    const originalTaskResult = await tx
       .select()
       .from(tasksTable)
       .where(
@@ -257,11 +258,12 @@ export async function breakDownTask(taskId: string) {
       )
       .orderBy(asc(tasksTable.sortOrder))
       .limit(1);
-    if (!originalTask) throw new Error("Task to break down not found.");
+    if (originalTaskResult.length === 0) throw new Error("Task to break down not found.");
+    const originalTask = originalTaskResult[0];
 
     // 2. Call AI
     const aiResult = await smartTaskDecomposition({
-      task: originalTask[0].name,
+      task: originalTask.name,
       userMood: "neutral",
     });
     if (!aiResult || aiResult.subTasks.length === 0)
@@ -272,7 +274,7 @@ export async function breakDownTask(taskId: string) {
     // 3. Find all tasks that come after the original task's sort position
     const subsequentTasks = await tx.select().from(tasksTable).where(and(
         eq(tasksTable.userId, userId),
-        gt(tasksTable.sortOrder, originalTask[0].sortOrder)
+        gt(tasksTable.sortOrder, originalTask.sortOrder)
       )
     ).orderBy(asc(tasksTable.sortOrder));
 
@@ -282,7 +284,7 @@ export async function breakDownTask(taskId: string) {
       0
     );
     const durationDifference =
-      newTasksTotalDuration - originalTask[0].durationEstimateMinutes;
+      newTasksTotalDuration - originalTask.durationEstimateMinutes;
     const timeShiftMs = durationDifference * 60000;
     const sortOrderShift = newSubTasks.length - 1;
 
@@ -299,10 +301,10 @@ export async function breakDownTask(taskId: string) {
     }
 
     // 6. Delete the original task
-    await tx.delete(tasksTable).where(eq(tasksTable.id, originalTask[0].id));
+    await tx.delete(tasksTable).where(eq(tasksTable.id, originalTask.id));
 
     // 7. Insert the new sub-tasks
-    let lastEndTime = new Date(originalTask[0].startTime);
+    let lastEndTime = new Date(originalTask.startTime);
     const newDbTasksToInsert = newSubTasks.map((subTask, index) => {
       const startTime = new Date(lastEndTime.getTime());
       lastEndTime = new Date(
@@ -315,14 +317,11 @@ export async function breakDownTask(taskId: string) {
         durationEstimateMinutes: subTask.durationEstimateMinutes,
         status: "pending" as const,
         startTime,
-        // If the original task had a parent, the new tasks inherit it.
-        // Otherwise, the original task's name becomes the parent title.
-        parentTaskTitle: originalTask[0].parentTaskTitle ?? originalTask[0].name,
-        // The first new sub-task becomes the "first of parent" ONLY IF the original task was.
+        parentTaskTitle: originalTask.parentTaskTitle ?? originalTask.name,
         isFirstOfParent:
           index === 0 &&
-          (originalTask[0].isFirstOfParent || !originalTask[0].parentTaskTitle),
-        sortOrder: originalTask[0].sortOrder + index,
+          (originalTask.isFirstOfParent || !originalTask.parentTaskTitle),
+        sortOrder: originalTask.sortOrder + index,
       };
     });
 
@@ -332,6 +331,8 @@ export async function breakDownTask(taskId: string) {
   });
 
   revalidatePath("/app");
+  
+  return getTasksForUser();
 }
 
 export async function getReschedulingOptionsAction(

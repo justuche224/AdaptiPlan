@@ -129,11 +129,14 @@ export default function AppPage({
 
   const handleBreakDownTask = async (task: Task) => {
     if (isLoading) return;
-
+  
     startTransition(async () => {
+      const originalTasks = tasks;
+      setOptimisticTasks(tasks.filter((t) => t.id !== task.id));
+      
       try {
-        await breakDownTask(task.id);
-        // The page will revalidate and fetch the new tasks.
+        const updatedTasks = await breakDownTask(task.id);
+        setTasks(updatedTasks);
         toast({
           title: "Task Decomposed",
           description: `"${task.name}" has been broken down into smaller steps.`,
@@ -145,9 +148,10 @@ export default function AppPage({
           description:
             error instanceof Error
               ? error.message
-              : "Could not break down task.",
+              : "Could not break down the task.",
           variant: "destructive",
         });
+        setOptimisticTasks(originalTasks);
       }
     });
   };
@@ -227,7 +231,6 @@ export default function AppPage({
 
         try {
             await deleteTask(deletingTaskId);
-            // State will be updated via revalidation, but we set it here for snappiness
             setTasks(optimisticTasks); 
             toast({
                 title: "Task Deleted",
@@ -259,7 +262,7 @@ export default function AppPage({
 
       try {
         await updateTaskStatus(taskId, status);
-        setTasks(newOptimisticTasks); // Ensure local state is in sync after server action
+        setTasks(newOptimisticTasks);
 
         if (status === 'missed') {
           const missedTask = originalTasks.find(t => t.id === taskId);
@@ -268,7 +271,6 @@ export default function AppPage({
                 setIsRescheduleDialogOpen(true);
             }
         } else {
-          // Check for daily summary only on completion
           const allTasksDone = newOptimisticTasks.every((t) => t.status !== "pending");
           if (allTasksDone && newOptimisticTasks.length > 0 && !dailySummaryData) {
             try {
@@ -334,7 +336,7 @@ export default function AppPage({
     startTransition(async () => {
       try {
         await reorderTasks(reorderedTasksList.map((t) => t.id));
-        setTasks(reorderedTasksList); // Sync state after successful reorder
+        setTasks(reorderedTasksList); 
         toast({
           title: "Schedule Updated",
           description: "Your tasks have been rearranged.",
@@ -346,7 +348,7 @@ export default function AppPage({
           description: "Could not save the new order.",
           variant: "destructive",
         });
-        setOptimisticTasks(tasks); // Revert on error
+        setOptimisticTasks(tasks); 
       }
     });
   };
