@@ -1,4 +1,3 @@
-
 "use server";
 
 import { revalidatePath } from "next/cache";
@@ -19,11 +18,13 @@ import type {
   MindfulMomentSuggestionOutput,
 } from "@/ai/flows/mindful-moment-suggestion";
 import type {
-    DailyProgressSummaryInput,
-    DailyProgressSummaryOutput,
+  DailyProgressSummaryInput,
+  DailyProgressSummaryOutput,
 } from "@/ai/flows/daily-progress-summary";
-import type { ReschedulingOptionsInput, ReschedulingOptionsOutput } from "@/ai/flows/rescheduling-assistant";
-
+import type {
+  ReschedulingOptionsInput,
+  ReschedulingOptionsOutput,
+} from "@/ai/flows/rescheduling-assistant";
 
 const getUserId = async () => {
   const session = await serverAuth();
@@ -46,49 +47,56 @@ const mapDbTaskToTask = (dbTask: typeof tasksTable.$inferSelect): Task => ({
 
 export async function getTasksForUser(): Promise<Task[]> {
   const userId = await getUserId();
-  const dbTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+  const dbTasks = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.userId, userId))
+    .orderBy(asc(tasksTable.sortOrder));
   return dbTasks.map(mapDbTaskToTask);
 }
 
 export async function addQuickTask(
-    name: string,
-    duration: number
+  name: string,
+  duration: number
 ): Promise<Task> {
-    const userId = await getUserId();
-    const existingTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+  const userId = await getUserId();
+  const existingTasks = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.userId, userId))
+    .orderBy(asc(tasksTable.sortOrder));
 
-    let lastEndTime = new Date();
-    let lastSortOrder = -1;
+  let lastEndTime = new Date();
+  let lastSortOrder = -1;
 
-    if (existingTasks.length > 0) {
-        const lastTask = existingTasks[existingTasks.length - 1];
-        lastEndTime = new Date(
-            new Date(lastTask.startTime).getTime() +
-            lastTask.durationEstimateMinutes * 60000
-        );
-        lastEndTime = new Date(lastEndTime.getTime() + 5 * 60000); // 5 min buffer
-        lastSortOrder = lastTask.sortOrder;
-    }
+  if (existingTasks.length > 0) {
+    const lastTask = existingTasks[existingTasks.length - 1];
+    lastEndTime = new Date(
+      new Date(lastTask.startTime).getTime() +
+        lastTask.durationEstimateMinutes * 60000
+    );
+    lastEndTime = new Date(lastEndTime.getTime() + 5 * 60000); // 5 min buffer
+    lastSortOrder = lastTask.sortOrder;
+  }
 
-    const startTime = new Date(lastEndTime.getTime());
+  const startTime = new Date(lastEndTime.getTime());
 
-    const [insertedTask] = await db
-        .insert(tasksTable)
-        .values({
-            publicId: `task_${Date.now()}_0`,
-            userId,
-            name,
-            durationEstimateMinutes: duration,
-            status: "pending",
-            startTime: startTime,
-            sortOrder: lastSortOrder + 1,
-        })
-        .returning();
+  const [insertedTask] = await db
+    .insert(tasksTable)
+    .values({
+      publicId: `task_${Date.now()}_0`,
+      userId,
+      name,
+      durationEstimateMinutes: duration,
+      status: "pending",
+      startTime: startTime,
+      sortOrder: lastSortOrder + 1,
+    })
+    .returning();
 
-    revalidatePath("/app");
-    return mapDbTaskToTask(insertedTask);
+  revalidatePath("/app");
+  return mapDbTaskToTask(insertedTask);
 }
-
 
 export async function addTaskAndDecompose(
   taskTitle: string,
@@ -105,7 +113,11 @@ export async function addTaskAndDecompose(
     throw new Error("The AI couldn't break down the task.");
   }
 
-  const existingTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+  const existingTasks = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.userId, userId))
+    .orderBy(asc(tasksTable.sortOrder));
 
   let lastEndTime = new Date();
   let lastSortOrder = -1;
@@ -164,53 +176,72 @@ export async function updateTaskStatus(
 }
 
 export async function deleteTask(taskId: string) {
-    const userId = await getUserId();
-    await db
-        .delete(tasksTable)
-        .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
-    revalidatePath("/app");
+  const userId = await getUserId();
+  await db
+    .delete(tasksTable)
+    .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
+  revalidatePath("/app");
 }
 
-export async function updateTask(taskId: string, name: string, duration: number): Promise<Task[]> {
-    const userId = await getUserId();
+export async function updateTask(
+  taskId: string,
+  name: string,
+  duration: number
+): Promise<Task[]> {
+  const userId = await getUserId();
 
-    const allTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
-    const taskIndex = allTasks.findIndex(t => t.publicId === taskId);
+  const allTasks = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.userId, userId))
+    .orderBy(asc(tasksTable.sortOrder));
+  const taskIndex = allTasks.findIndex((t) => t.publicId === taskId);
 
-    if (taskIndex === -1) {
-        throw new Error("Task not found");
+  if (taskIndex === -1) {
+    throw new Error("Task not found");
+  }
+
+  const updatedTasks: Task[] = await db.transaction(async (tx) => {
+    // Update the target task
+    const [updatedDbTask] = await tx
+      .update(tasksTable)
+      .set({ name, durationEstimateMinutes: duration })
+      .where(
+        and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId))
+      )
+      .returning();
+
+    // Now, recalculate start times for subsequent tasks
+    let nextStartTime = new Date(
+      new Date(updatedDbTask.startTime).getTime() +
+        updatedDbTask.durationEstimateMinutes * 60000
+    );
+
+    for (let i = taskIndex + 1; i < allTasks.length; i++) {
+      const taskToShift = allTasks[i];
+      const newStartTime = new Date(nextStartTime.getTime());
+
+      await tx
+        .update(tasksTable)
+        .set({ startTime: newStartTime })
+        .where(eq(tasksTable.id, taskToShift.id));
+
+      nextStartTime = new Date(
+        newStartTime.getTime() + taskToShift.durationEstimateMinutes * 60000
+      );
     }
 
-    const updatedTasks: Task[] = await db.transaction(async tx => {
-        // Update the target task
-        const [updatedDbTask] = await tx
-            .update(tasksTable)
-            .set({ name, durationEstimateMinutes: duration })
-            .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)))
-            .returning();
+    // Refetch all tasks to return the updated list
+    const finalTasks = await tx
+      .select()
+      .from(tasksTable)
+      .where(eq(tasksTable.userId, userId))
+      .orderBy(asc(tasksTable.sortOrder));
+    return finalTasks.map(mapDbTaskToTask);
+  });
 
-        // Now, recalculate start times for subsequent tasks
-        let nextStartTime = new Date(new Date(updatedDbTask.startTime).getTime() + updatedDbTask.durationEstimateMinutes * 60000);
-        
-        for (let i = taskIndex + 1; i < allTasks.length; i++) {
-            const taskToShift = allTasks[i];
-            const newStartTime = new Date(nextStartTime.getTime());
-            
-            await tx
-                .update(tasksTable)
-                .set({ startTime: newStartTime })
-                .where(eq(tasksTable.id, taskToShift.id));
-
-            nextStartTime = new Date(newStartTime.getTime() + taskToShift.durationEstimateMinutes * 60000);
-        }
-        
-        // Refetch all tasks to return the updated list
-        const finalTasks = await tx.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
-        return finalTasks.map(mapDbTaskToTask);
-    });
-    
-    revalidatePath('/app');
-    return updatedTasks;
+  revalidatePath("/app");
+  return updatedTasks;
 }
 
 export async function breakDownTask(taskId: string) {
@@ -218,75 +249,90 @@ export async function breakDownTask(taskId: string) {
 
   await db.transaction(async (tx) => {
     // 1. Find the task to break down
-    const originalTask = await tx.query.tasks.findFirst({
-      where: and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)),
-    });
+    const originalTask = await db
+      .select()
+      .from(tasksTable)
+      .where(
+        and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId))
+      )
+      .orderBy(asc(tasksTable.sortOrder))
+      .limit(1);
     if (!originalTask) throw new Error("Task to break down not found.");
-    
+
     // 2. Call AI
-    const aiResult = await smartTaskDecomposition({ task: originalTask.name, userMood: 'neutral' });
-    if (!aiResult || aiResult.subTasks.length === 0) throw new Error("AI could not break down the task.");
-    
-    const newSubTasks = aiResult.subTasks;
-    
-    // 3. Find all tasks that come after the original task's sort position
-    const subsequentTasks = await tx.query.tasks.findMany({
-        where: and(
-            eq(tasksTable.userId, userId),
-            gt(tasksTable.sortOrder, originalTask.sortOrder)
-        ),
-        orderBy: asc(tasksTable.sortOrder)
+    const aiResult = await smartTaskDecomposition({
+      task: originalTask[0].name,
+      userMood: "neutral",
     });
-    
+    if (!aiResult || aiResult.subTasks.length === 0)
+      throw new Error("AI could not break down the task.");
+
+    const newSubTasks = aiResult.subTasks;
+
+    // 3. Find all tasks that come after the original task's sort position
+    const subsequentTasks = await tx.select().from(tasksTable).where(and(
+        eq(tasksTable.userId, userId),
+        gt(tasksTable.sortOrder, originalTask[0].sortOrder)
+      )
+    ).orderBy(asc(tasksTable.sortOrder));
+
     // 4. Calculate shifts
-    const newTasksTotalDuration = newSubTasks.reduce((sum, t) => sum + t.durationEstimateMinutes, 0);
-    const durationDifference = newTasksTotalDuration - originalTask.durationEstimateMinutes;
+    const newTasksTotalDuration = newSubTasks.reduce(
+      (sum, t) => sum + t.durationEstimateMinutes,
+      0
+    );
+    const durationDifference =
+      newTasksTotalDuration - originalTask[0].durationEstimateMinutes;
     const timeShiftMs = durationDifference * 60000;
     const sortOrderShift = newSubTasks.length - 1;
 
     // 5. Update subsequent tasks by shifting them down
     // We iterate backwards to avoid sort order conflicts
     for (const task of subsequentTasks.reverse()) {
-        await tx.update(tasksTable)
-            .set({
-                startTime: new Date(new Date(task.startTime).getTime() + timeShiftMs),
-                sortOrder: task.sortOrder + sortOrderShift,
-            })
-            .where(eq(tasksTable.id, task.id));
+      await tx
+        .update(tasksTable)
+        .set({
+          startTime: new Date(new Date(task.startTime).getTime() + timeShiftMs),
+          sortOrder: task.sortOrder + sortOrderShift,
+        })
+        .where(eq(tasksTable.id, task.id));
     }
-    
+
     // 6. Delete the original task
-    await tx.delete(tasksTable).where(eq(tasksTable.id, originalTask.id));
+    await tx.delete(tasksTable).where(eq(tasksTable.id, originalTask[0].id));
 
     // 7. Insert the new sub-tasks
-    let lastEndTime = new Date(originalTask.startTime);
+    let lastEndTime = new Date(originalTask[0].startTime);
     const newDbTasksToInsert = newSubTasks.map((subTask, index) => {
-        const startTime = new Date(lastEndTime.getTime());
-        lastEndTime = new Date(startTime.getTime() + subTask.durationEstimateMinutes * 60000);
-        return {
-            publicId: `task_${Date.now()}_${index}`,
-            userId,
-            name: subTask.name,
-            durationEstimateMinutes: subTask.durationEstimateMinutes,
-            status: "pending" as const,
-            startTime,
-            // If the original task had a parent, the new tasks inherit it.
-            // Otherwise, the original task's name becomes the parent title.
-            parentTaskTitle: originalTask.parentTaskTitle ?? originalTask.name,
-            // The first new sub-task becomes the "first of parent" ONLY IF the original task was.
-            isFirstOfParent: index === 0 && (originalTask.isFirstOfParent || !originalTask.parentTaskTitle),
-            sortOrder: originalTask.sortOrder + index,
-        };
+      const startTime = new Date(lastEndTime.getTime());
+      lastEndTime = new Date(
+        startTime.getTime() + subTask.durationEstimateMinutes * 60000
+      );
+      return {
+        publicId: `task_${Date.now()}_${index}`,
+        userId,
+        name: subTask.name,
+        durationEstimateMinutes: subTask.durationEstimateMinutes,
+        status: "pending" as const,
+        startTime,
+        // If the original task had a parent, the new tasks inherit it.
+        // Otherwise, the original task's name becomes the parent title.
+        parentTaskTitle: originalTask[0].parentTaskTitle ?? originalTask[0].name,
+        // The first new sub-task becomes the "first of parent" ONLY IF the original task was.
+        isFirstOfParent:
+          index === 0 &&
+          (originalTask[0].isFirstOfParent || !originalTask[0].parentTaskTitle),
+        sortOrder: originalTask[0].sortOrder + index,
+      };
     });
 
     if (newDbTasksToInsert.length > 0) {
-        await tx.insert(tasksTable).values(newDbTasksToInsert);
+      await tx.insert(tasksTable).values(newDbTasksToInsert);
     }
   });
 
-  revalidatePath('/app');
+  revalidatePath("/app");
 }
-
 
 export async function getReschedulingOptionsAction(
   input: ReschedulingOptionsInput
@@ -311,9 +357,7 @@ export async function applyReschedule(newSchedule: Task[]) {
           )
         );
     } else {
-       await tx
-        .delete(tasksTable)
-        .where(eq(tasksTable.userId, userId));
+      await tx.delete(tasksTable).where(eq(tasksTable.userId, userId));
     }
 
     // Update the remaining tasks
@@ -334,37 +378,46 @@ export async function applyReschedule(newSchedule: Task[]) {
   revalidatePath("/app");
 }
 
-
 export async function reorderTasks(orderedTaskIds: string[]) {
-    const userId = await getUserId();
-    const allTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId));
+  const userId = await getUserId();
+  const allTasks = await db
+    .select()
+    .from(tasksTable)
+    .where(eq(tasksTable.userId, userId));
 
-    if (allTasks.length === 0) return;
+  if (allTasks.length === 0) return;
 
-    const taskMap = new Map(allTasks.map(t => [t.publicId, t]));
-    
-    // Find the start time of the first task in the reordered list to anchor the schedule
-    const firstTaskInOrder = allTasks.find(t => t.publicId === orderedTaskIds[0]);
-    let nextStartTime = new Date(firstTaskInOrder?.startTime ?? new Date());
+  const taskMap = new Map(allTasks.map((t) => [t.publicId, t]));
 
-    await db.transaction(async (tx) => {
-      for (const [index, taskId] of orderedTaskIds.entries()) {
-          const task = taskMap.get(taskId);
-          if (task) {
-              const currentTaskStartTime = new Date(nextStartTime.getTime());
-              await tx.update(tasksTable)
-                  .set({
-                      sortOrder: index,
-                      startTime: currentTaskStartTime,
-                  })
-                  .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
+  // Find the start time of the first task in the reordered list to anchor the schedule
+  const firstTaskInOrder = allTasks.find(
+    (t) => t.publicId === orderedTaskIds[0]
+  );
+  let nextStartTime = new Date(firstTaskInOrder?.startTime ?? new Date());
 
-              nextStartTime = new Date(currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000);
-          }
+  await db.transaction(async (tx) => {
+    for (const [index, taskId] of orderedTaskIds.entries()) {
+      const task = taskMap.get(taskId);
+      if (task) {
+        const currentTaskStartTime = new Date(nextStartTime.getTime());
+        await tx
+          .update(tasksTable)
+          .set({
+            sortOrder: index,
+            startTime: currentTaskStartTime,
+          })
+          .where(
+            and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId))
+          );
+
+        nextStartTime = new Date(
+          currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000
+        );
       }
-    });
+    }
+  });
 
-    revalidatePath('/app');
+  revalidatePath("/app");
 }
 
 export async function getMindfulMoment(
@@ -380,11 +433,11 @@ export async function getDailySummary(
 }
 
 export async function clearAllTasks() {
-    const userId = await getUserId();
-    await db.delete(tasksTable).where(eq(tasksTable.userId, userId));
-    revalidatePath("/app");
+  const userId = await getUserId();
+  await db.delete(tasksTable).where(eq(tasksTable.userId, userId));
+  revalidatePath("/app");
 }
 
 export async function signOutAction() {
-    await auth.api.signOut();
+  await auth.api.signOut();
 }
