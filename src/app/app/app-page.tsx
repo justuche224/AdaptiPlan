@@ -20,6 +20,7 @@ import { DailySummaryView } from "@/components/daily-summary-view";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { User } from "better-auth";
+import { RescheduleDialog } from "@/components/reschedule-dialog";
 
 export default function AppPage({
   initialTasks,
@@ -43,6 +44,10 @@ export default function AppPage({
   );
   const [dailySummaryData, setDailySummaryData] =
     useState<DailySummaryData | null>(null);
+  
+  const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
+  const [taskToReschedule, setTaskToReschedule] = useState<Task | null>(null);
+
   const { toast } = useToast();
 
   const handleSetMood = useCallback(async (newMood: string) => {
@@ -115,6 +120,7 @@ export default function AppPage({
     status: "completed" | "missed"
   ) => {
     startTransition(async () => {
+      const originalTasks = tasks;
       const newOptimisticTasks = tasks.map((t) =>
         t.id === taskId ? { ...t, status } : t
       );
@@ -122,7 +128,33 @@ export default function AppPage({
 
       try {
         await updateTaskStatus(taskId, status);
-        // The revalidation from the server action will update the `tasks` state
+
+        if (status === 'missed') {
+          const missedTask = originalTasks.find(t => t.id === taskId);
+            if (missedTask) {
+                setTaskToReschedule(missedTask);
+                setIsRescheduleDialogOpen(true);
+            }
+        } else {
+          // Check for daily summary only on completion
+          const allTasksDone = newOptimisticTasks.every((t) => t.status !== "pending");
+          if (allTasksDone && newOptimisticTasks.length > 0 && !dailySummaryData) {
+            try {
+              const result = await getDailySummary({
+                tasks: JSON.stringify(newOptimisticTasks),
+              });
+              setDailySummaryData(result);
+            } catch (error) {
+              console.error("Failed to get daily summary:", error);
+              setDailySummaryData({
+                summary:
+                  "You've completed all your tasks for the day. Great job!",
+                completedCount: newOptimisticTasks.filter(t => t.status === 'completed').length,
+                missedCount: newOptimisticTasks.filter(t => t.status === 'missed').length,
+              });
+            }
+          }
+        }
       } catch (error) {
         console.error(error);
         toast({
@@ -130,30 +162,11 @@ export default function AppPage({
           description: "Could not update task status.",
           variant: "destructive",
         });
-        // Revert optimistic update by setting it back to original state
-        setOptimisticTasks(tasks);
-      }
-
-       // Check for daily summary
-      const allTasksDone = newOptimisticTasks.every((t) => t.status !== "pending");
-      if (allTasksDone && newOptimisticTasks.length > 0 && !dailySummaryData) {
-        try {
-          const result = await getDailySummary({
-            tasks: JSON.stringify(newOptimisticTasks),
-          });
-          setDailySummaryData(result);
-        } catch (error) {
-          console.error("Failed to get daily summary:", error);
-          setDailySummaryData({
-            summary:
-              "You've completed all your tasks for the day. Great job!",
-            completedCount: newOptimisticTasks.filter(t => t.status === 'completed').length,
-            missedCount: newOptimisticTasks.filter(t => t.status === 'missed').length,
-          });
-        }
+        setOptimisticTasks(originalTasks);
       }
     });
   };
+
 
   const handleResetDay = () => {
     startTransition(async () => {
@@ -258,6 +271,12 @@ export default function AppPage({
 
         {renderMainContent()}
       </main>
+      <RescheduleDialog
+        open={isRescheduleDialogOpen}
+        onOpenChange={setIsRescheduleDialogOpen}
+        tasks={tasks}
+        missedTask={taskToReschedule}
+      />
       <footer className="text-center p-4 text-xs text-muted-foreground">
         <p>AdaptiPlan by Firebase Studio</p>
       </footer>

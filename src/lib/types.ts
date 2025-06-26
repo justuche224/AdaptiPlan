@@ -13,3 +13,9 @@ export interface DailySummaryData {
   completedCount: number;
   missedCount: number;
 }
+
+export interface RescheduleOption {
+  title: string;
+  description: string;
+  newSchedule: string; // The full schedule as a JSON string of Task[]
+}

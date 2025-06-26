@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, notInArray } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks as tasksTable } from "@/db/schema/tasks";
 import { serverAuth } from "@/lib/server-auth";
 import { auth } from "@/lib/auth";
 
 import { smartTaskDecomposition } from "@/ai/flows/smart-task-decomposition";
-import { intelligentScheduleAdjustment } from "@/ai/flows/intelligent-schedule-adjustment";
+import { getReschedulingOptions } from "@/ai/flows/rescheduling-assistant";
 import { getMindfulMomentSuggestion } from "@/ai/flows/mindful-moment-suggestion";
 import { getDailyProgressSummary } from "@/ai/flows/daily-progress-summary";
 
@@ -21,6 +21,7 @@ import type {
     DailyProgressSummaryInput,
     DailyProgressSummaryOutput,
 } from "@/ai/flows/daily-progress-summary";
+import type { ReschedulingOptionsInput, ReschedulingOptionsOutput } from "@/ai/flows/rescheduling-assistant";
 
 
 const getUserId = async () => {
@@ -118,27 +119,56 @@ export async function updateTaskStatus(
     .set({ status })
     .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
 
-  if (status === "missed") {
-    const allTasks = await getTasksForUser();
-    const result = await intelligentScheduleAdjustment({
-      currentSchedule: JSON.stringify(allTasks),
-      missedTasks: JSON.stringify(allTasks.find((t) => t.id === taskId)),
-      userMood: "neutral", // You may want to pass the actual mood here
-    });
+  revalidatePath("/app");
+}
 
-    const rescheduledTasks: Task[] = JSON.parse(result.rescheduledSchedule);
 
-    // This is a complex operation. In a real app, you'd use a transaction.
-    for (const task of rescheduledTasks) {
-      await db
-        .update(tasksTable)
-        .set({ startTime: new Date(task.startTime), status: task.status })
-        .where(and(eq(tasksTable.publicId, task.id), eq(tasksTable.userId, userId)));
+export async function getReschedulingOptionsAction(
+  input: ReschedulingOptionsInput
+): Promise<ReschedulingOptionsOutput> {
+  await getUserId(); // Ensures user is authenticated
+  return await getReschedulingOptions(input);
+}
+
+export async function applyReschedule(newSchedule: Task[]) {
+  const userId = await getUserId();
+  const newScheduleIds = newSchedule.map((t) => t.id);
+
+  await db.transaction(async (tx) => {
+    // Delete tasks that are no longer in the schedule
+    if (newScheduleIds.length > 0) {
+      await tx
+        .delete(tasksTable)
+        .where(
+          and(
+            eq(tasksTable.userId, userId),
+            notInArray(tasksTable.publicId, newScheduleIds)
+          )
+        );
+    } else {
+       await tx
+        .delete(tasksTable)
+        .where(eq(tasksTable.userId, userId));
     }
-  }
+
+    // Update the remaining tasks
+    for (const [index, task] of newSchedule.entries()) {
+      await tx
+        .update(tasksTable)
+        .set({
+          startTime: new Date(task.startTime),
+          status: task.status,
+          sortOrder: index,
+        })
+        .where(
+          and(eq(tasksTable.publicId, task.id), eq(tasksTable.userId, userId))
+        );
+    }
+  });
 
   revalidatePath("/app");
 }
+
 
 export async function reorderTasks(orderedTaskIds: string[]) {
     const userId = await getUserId();
@@ -147,22 +177,28 @@ export async function reorderTasks(orderedTaskIds: string[]) {
     if (allTasks.length === 0) return;
 
     const taskMap = new Map(allTasks.map(t => [t.publicId, t]));
-    let nextStartTime = new Date(allTasks[0].startTime);
+    
+    // Find the start time of the first task in the reordered list to anchor the schedule
+    const firstTaskInOrder = allTasks.find(t => t.publicId === orderedTaskIds[0]);
+    let nextStartTime = new Date(firstTaskInOrder?.startTime ?? new Date());
 
-    for (const [index, taskId] of orderedTaskIds.entries()) {
-        const task = taskMap.get(taskId);
-        if (task) {
-            const currentTaskStartTime = new Date(nextStartTime.getTime());
-            await db.update(tasksTable)
-                .set({
-                    sortOrder: index,
-                    startTime: currentTaskStartTime,
-                })
-                .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
+    await db.transaction(async (tx) => {
+      for (const [index, taskId] of orderedTaskIds.entries()) {
+          const task = taskMap.get(taskId);
+          if (task) {
+              const currentTaskStartTime = new Date(nextStartTime.getTime());
+              await tx.update(tasksTable)
+                  .set({
+                      sortOrder: index,
+                      startTime: currentTaskStartTime,
+                  })
+                  .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
 
-            nextStartTime = new Date(currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000);
-        }
-    }
+              nextStartTime = new Date(currentTaskStartTime.getTime() + task.durationEstimateMinutes * 60000);
+          }
+      }
+    });
+
     revalidatePath('/app');
 }
 
