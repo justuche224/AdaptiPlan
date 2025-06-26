@@ -27,6 +27,7 @@ interface TimelineViewProps {
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
+  onBreakDown: (task: Task) => void;
   isLoading: boolean;
   onDragEnd: (event: DragEndEvent) => void;
 }
@@ -45,12 +46,14 @@ function SortableTaskWrapper({
   onUpdateTaskStatus,
   onEditTask,
   onDeleteTask,
+  onBreakDown,
   isLoading,
 }: {
   task: Task;
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
+  onBreakDown: (task: Task) => void;
   isLoading: boolean;
 }) {
   const {
@@ -76,6 +79,7 @@ function SortableTaskWrapper({
         onUpdateStatus={onUpdateTaskStatus}
         onEdit={onEditTask}
         onDelete={onDeleteTask}
+        onBreakDown={onBreakDown}
         isLoading={isLoading}
       />
     </div>
@@ -87,6 +91,7 @@ export function TimelineView({
   onUpdateTaskStatus,
   onEditTask,
   onDeleteTask,
+  onBreakDown,
   isLoading,
   onDragEnd,
 }: TimelineViewProps) {
@@ -181,6 +186,7 @@ export function TimelineView({
                   onUpdateTaskStatus={onUpdateTaskStatus}
                   onEditTask={onEditTask}
                   onDeleteTask={onDeleteTask}
+                  onBreakDown={onBreakDown}
                   isLoading={isLoading}
                 />
               );

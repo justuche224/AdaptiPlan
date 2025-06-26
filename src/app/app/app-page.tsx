@@ -9,6 +9,7 @@ import {
   updateTask,
   updateTaskStatus,
   deleteTask,
+  breakDownTask,
   getMindfulMoment,
   getDailySummary,
   reorderTasks,
@@ -120,6 +121,31 @@ export default function AppPage({
             error instanceof Error
               ? error.message
               : "Could not break down task. Please try again.",
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  const handleBreakDownTask = async (task: Task) => {
+    if (isLoading) return;
+
+    startTransition(async () => {
+      try {
+        await breakDownTask(task.id);
+        // The page will revalidate and fetch the new tasks.
+        toast({
+          title: "Task Decomposed",
+          description: `"${task.name}" has been broken down into smaller steps.`,
+        });
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description:
+            error instanceof Error
+              ? error.message
+              : "Could not break down task.",
           variant: "destructive",
         });
       }
@@ -345,6 +371,7 @@ export default function AppPage({
           onUpdateTaskStatus={handleUpdateTaskStatus}
           onEditTask={setEditingTask}
           onDeleteTask={setDeletingTaskId}
+          onBreakDown={handleBreakDownTask}
           isLoading={isLoading}
           onDragEnd={handleDragEnd}
         />

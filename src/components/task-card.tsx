@@ -5,7 +5,15 @@ import type { Task } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Check, X, Clock, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  Check,
+  X,
+  Clock,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -19,6 +27,7 @@ interface TaskCardProps {
   onUpdateStatus: (taskId: string, status: "completed" | "missed") => void;
   onEdit: (task: Task) => void;
   onDelete: (taskId: string) => void;
+  onBreakDown: (task: Task) => void;
   isLoading: boolean;
 }
 
@@ -27,6 +36,7 @@ export function TaskCard({
   onUpdateStatus,
   onEdit,
   onDelete,
+  onBreakDown,
   isLoading,
 }: TaskCardProps) {
   const startTime = new Date(task.startTime);
@@ -121,14 +131,30 @@ export function TaskCard({
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                    <DropdownMenuItem onClick={() => onEdit(task)}>
+                  <DropdownMenuContent
+                    align="end"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {!task.parentTaskTitle && (
+                      <DropdownMenuItem
+                        onClick={() => onBreakDown(task)}
+                        disabled={isLoading}
+                      >
+                        <Wand2 className="mr-2 h-4 w-4" />
+                        <span>Break Down</span>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      onClick={() => onEdit(task)}
+                      disabled={isLoading}
+                    >
                       <Pencil className="mr-2 h-4 w-4" />
                       <span>Edit</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => onDelete(task.id)}
                       className="text-red-500 focus:text-red-500"
+                      disabled={isLoading}
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       <span>Delete</span>
