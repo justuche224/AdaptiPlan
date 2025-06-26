@@ -93,6 +93,21 @@ export function TaskCard({
           <div className="w-full sm:w-auto pt-4 sm:pt-0">
             {isPending && (
               <div className="flex gap-2 justify-end">
+                {!task.parentTaskTitle && (
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-9 w-9 rounded-full border-blue-500 text-blue-500 hover:bg-blue-500/10 hover:text-blue-400"
+                    onClick={(e) => {
+                      handleButtonClick(e);
+                      onBreakDown(task);
+                    }}
+                    aria-label={`Break down task '${task.name}'`}
+                    disabled={isLoading}
+                  >
+                    <Wand2 className="h-4 w-4" />
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="outline"
@@ -135,15 +150,6 @@ export function TaskCard({
                     align="end"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {!task.parentTaskTitle && (
-                      <DropdownMenuItem
-                        onClick={() => onBreakDown(task)}
-                        disabled={isLoading}
-                      >
-                        <Wand2 className="mr-2 h-4 w-4" />
-                        <span>Break Down</span>
-                      </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem
                       onClick={() => onEdit(task)}
                       disabled={isLoading}
