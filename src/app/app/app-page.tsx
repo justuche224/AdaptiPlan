@@ -19,8 +19,15 @@ import { MindfulMomentAlert } from "@/components/mindful-moment-alert";
 import { DailySummaryView } from "@/components/daily-summary-view";
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
+import type { User } from "better-auth";
 
-export default function AppPage({ initialTasks }: { initialTasks: Task[] }) {
+export default function AppPage({
+  initialTasks,
+  user,
+}: {
+  initialTasks: Task[];
+  user: User;
+}) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [optimisticTasks, setOptimisticTasks] = useOptimistic(
     tasks,
@@ -230,10 +237,12 @@ export default function AppPage({ initialTasks }: { initialTasks: Task[] }) {
   return (
     <div className="flex flex-col min-h-screen">
       <AppHeader
+        user={user}
         viewMode={viewMode}
         setViewMode={setViewMode}
         mood={mood}
         setMood={handleSetMood}
+        onClearTasks={handleResetDay}
       />
       <main className="flex-grow container mx-auto p-4 flex flex-col gap-6">
         {!dailySummaryData && (

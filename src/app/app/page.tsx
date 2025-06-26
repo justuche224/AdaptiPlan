@@ -6,13 +6,13 @@ import { getTasksForUser } from "../actions";
 
 const page = async () => {
   const data = await serverAuth();
-  if (!data?.session) {
+  if (!data?.session || !data.user) {
     return redirect("/sign-in");
   }
 
   const initialTasks = await getTasksForUser();
 
-  return <AppPage initialTasks={initialTasks} />;
+  return <AppPage initialTasks={initialTasks} user={data.user} />;
 };
 
 export default page;

@@ -11,4 +11,7 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  redirect: {
+    signOut: "/sign-in",
+  },
 });

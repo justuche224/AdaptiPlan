@@ -6,19 +6,25 @@ import { MoodSelector } from "@/components/mood-selector";
 import { Button } from "@/components/ui/button";
 import { List, Target } from "lucide-react";
 import { Separator } from "./ui/separator";
+import type { User } from "better-auth";
+import { UserProfileButton } from "./user-profile-button";
 
 interface AppHeaderProps {
+  user: User;
   viewMode: "timeline" | "focus";
   setViewMode: Dispatch<SetStateAction<"timeline" | "focus">>;
   mood: string;
   setMood: (mood: string) => void;
+  onClearTasks: () => void;
 }
 
 export function AppHeader({
+  user,
   viewMode,
   setViewMode,
   mood,
   setMood,
+  onClearTasks,
 }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -52,6 +58,8 @@ export function AppHeader({
                 <span className="hidden sm:inline ml-2">Focus</span>
               </Button>
           </div>
+          <Separator orientation="vertical" className="h-6" />
+          <UserProfileButton user={user} onClearTasks={onClearTasks} />
         </div>
       </div>
     </header>

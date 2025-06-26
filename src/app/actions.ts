@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks as tasksTable } from "@/db/schema/tasks";
 import { serverAuth } from "@/lib/server-auth";
+import { auth } from "@/lib/auth";
 
 import { smartTaskDecomposition } from "@/ai/flows/smart-task-decomposition";
 import { intelligentScheduleAdjustment } from "@/ai/flows/intelligent-schedule-adjustment";
@@ -181,4 +182,8 @@ export async function clearAllTasks() {
     const userId = await getUserId();
     await db.delete(tasksTable).where(eq(tasksTable.userId, userId));
     revalidatePath("/app");
+}
+
+export async function signOutAction() {
+    await auth.api.signOut();
 }
