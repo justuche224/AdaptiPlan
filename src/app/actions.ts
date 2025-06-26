@@ -1,7 +1,8 @@
+
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, notInArray } from "drizzle-orm";
+import { and, asc, eq, notInArray, gt } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks as tasksTable } from "@/db/schema/tasks";
 import { serverAuth } from "@/lib/server-auth";
@@ -48,6 +49,46 @@ export async function getTasksForUser(): Promise<Task[]> {
   const dbTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
   return dbTasks.map(mapDbTaskToTask);
 }
+
+export async function addQuickTask(
+    name: string,
+    duration: number
+): Promise<Task> {
+    const userId = await getUserId();
+    const existingTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+
+    let lastEndTime = new Date();
+    let lastSortOrder = -1;
+
+    if (existingTasks.length > 0) {
+        const lastTask = existingTasks[existingTasks.length - 1];
+        lastEndTime = new Date(
+            new Date(lastTask.startTime).getTime() +
+            lastTask.durationEstimateMinutes * 60000
+        );
+        lastEndTime = new Date(lastEndTime.getTime() + 5 * 60000); // 5 min buffer
+        lastSortOrder = lastTask.sortOrder;
+    }
+
+    const startTime = new Date(lastEndTime.getTime());
+
+    const [insertedTask] = await db
+        .insert(tasksTable)
+        .values({
+            publicId: `task_${Date.now()}_0`,
+            userId,
+            name,
+            durationEstimateMinutes: duration,
+            status: "pending",
+            startTime: startTime,
+            sortOrder: lastSortOrder + 1,
+        })
+        .returning();
+
+    revalidatePath("/app");
+    return mapDbTaskToTask(insertedTask);
+}
+
 
 export async function addTaskAndDecompose(
   taskTitle: string,
@@ -120,6 +161,56 @@ export async function updateTaskStatus(
     .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
 
   revalidatePath("/app");
+}
+
+export async function deleteTask(taskId: string) {
+    const userId = await getUserId();
+    await db
+        .delete(tasksTable)
+        .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)));
+    revalidatePath("/app");
+}
+
+export async function updateTask(taskId: string, name: string, duration: number): Promise<Task[]> {
+    const userId = await getUserId();
+
+    const allTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+    const taskIndex = allTasks.findIndex(t => t.publicId === taskId);
+
+    if (taskIndex === -1) {
+        throw new Error("Task not found");
+    }
+
+    const updatedTasks: Task[] = await db.transaction(async tx => {
+        // Update the target task
+        const [updatedDbTask] = await tx
+            .update(tasksTable)
+            .set({ name, durationEstimateMinutes: duration })
+            .where(and(eq(tasksTable.publicId, taskId), eq(tasksTable.userId, userId)))
+            .returning();
+
+        // Now, recalculate start times for subsequent tasks
+        let nextStartTime = new Date(new Date(updatedDbTask.startTime).getTime() + updatedDbTask.durationEstimateMinutes * 60000);
+        
+        for (let i = taskIndex + 1; i < allTasks.length; i++) {
+            const taskToShift = allTasks[i];
+            const newStartTime = new Date(nextStartTime.getTime());
+            
+            await tx
+                .update(tasksTable)
+                .set({ startTime: newStartTime })
+                .where(eq(tasksTable.id, taskToShift.id));
+
+            nextStartTime = new Date(newStartTime.getTime() + taskToShift.durationEstimateMinutes * 60000);
+        }
+        
+        // Refetch all tasks to return the updated list
+        const finalTasks = await tx.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
+        return finalTasks.map(mapDbTaskToTask);
+    });
+    
+    revalidatePath('/app');
+    return updatedTasks;
 }
 
 

@@ -1,10 +1,14 @@
+
 "use client";
 
 import { useState, useMemo, useCallback, useTransition, useOptimistic } from "react";
 import type { Task, DailySummaryData } from "@/lib/types";
 import {
   addTaskAndDecompose,
+  addQuickTask,
+  updateTask,
   updateTaskStatus,
+  deleteTask,
   getMindfulMoment,
   getDailySummary,
   reorderTasks,
@@ -21,6 +25,19 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import type { User } from "better-auth";
 import { RescheduleDialog } from "@/components/reschedule-dialog";
+import { EditTaskDialog } from "@/components/edit-task-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2 } from "lucide-react";
+
 
 export default function AppPage({
   initialTasks,
@@ -47,6 +64,9 @@ export default function AppPage({
   
   const [isRescheduleDialogOpen, setIsRescheduleDialogOpen] = useState(false);
   const [taskToReschedule, setTaskToReschedule] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+
 
   const { toast } = useToast();
 
@@ -66,7 +86,7 @@ export default function AppPage({
     }
   }, []);
 
-  const handleAddTask = async (taskTitle: string) => {
+  const handleDecomposeTask = async (taskTitle: string) => {
     if (!taskTitle.trim() || isLoading) return;
 
     startTransition(async () => {
@@ -105,15 +125,100 @@ export default function AppPage({
       }
     });
   };
+  
+  const handleQuickAddTask = async (name: string, duration: number) => {
+    if (!name.trim() || isLoading) return;
 
-  const handleBreakDownTask = async (taskId: string, taskTitle: string) => {
-    // This functionality is now part of initial task creation.
-    // For simplicity, we'll suggest breaking down tasks from the input form.
-    toast({
-      title: "Feature Update",
-      description: "To break down a task, please add it as a new item.",
+    startTransition(async () => {
+        const optimisticTask: Task = {
+            id: `temp-${Date.now()}`,
+            name,
+            durationEstimateMinutes: duration,
+            status: "pending",
+            startTime: new Date().toISOString(),
+        };
+
+        setOptimisticTasks([...tasks, optimisticTask]);
+
+        try {
+            const newTask = await addQuickTask(name, duration);
+            setTasks(prev => [...prev.filter(t => !t.id.startsWith('temp-')), newTask]);
+            
+            toast({
+                title: "Task Added",
+                description: `"${name}" has been added to your timeline.`,
+            });
+        } catch (error) {
+            console.error(error);
+            toast({
+                title: "Error",
+                description: "Could not add task. Please try again.",
+                variant: "destructive",
+            });
+            setOptimisticTasks(tasks);
+        }
     });
   };
+  
+  const handleUpdateTask = async (taskId: string, name: string, duration: number) => {
+    if (isLoading) return;
+
+    startTransition(async () => {
+      const originalTasks = tasks;
+      const newOptimisticTasks = tasks.map((t) =>
+        t.id === taskId ? { ...t, name, durationEstimateMinutes: duration } : t
+      );
+      setOptimisticTasks(newOptimisticTasks);
+      setEditingTask(null);
+
+      try {
+        const updatedTasks = await updateTask(taskId, name, duration);
+        setTasks(updatedTasks);
+        toast({
+          title: "Task Updated",
+          description: "Your task and schedule have been updated.",
+        });
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: "Error",
+          description: "Could not update task.",
+          variant: "destructive",
+        });
+        setOptimisticTasks(originalTasks);
+      }
+    });
+  };
+  
+  const handleDeleteTask = () => {
+    if (!deletingTaskId || isLoading) return;
+
+    startTransition(async () => {
+        const originalTasks = tasks;
+        const optimisticTasks = tasks.filter((t) => t.id !== deletingTaskId);
+        setOptimisticTasks(optimisticTasks);
+        setDeletingTaskId(null);
+
+        try {
+            await deleteTask(deletingTaskId);
+            // State will be updated via revalidation, but we set it here for snappiness
+            setTasks(optimisticTasks); 
+            toast({
+                title: "Task Deleted",
+                description: "The task has been removed from your timeline.",
+            });
+        } catch (error) {
+            console.error(error);
+            toast({
+                title: "Error",
+                description: "Could not delete the task.",
+                variant: "destructive",
+            });
+            setOptimisticTasks(originalTasks);
+        }
+    });
+  };
+
 
   const handleUpdateTaskStatus = (
     taskId: string,
@@ -128,6 +233,7 @@ export default function AppPage({
 
       try {
         await updateTaskStatus(taskId, status);
+        setTasks(newOptimisticTasks); // Ensure local state is in sync after server action
 
         if (status === 'missed') {
           const missedTask = originalTasks.find(t => t.id === taskId);
@@ -194,13 +300,15 @@ export default function AppPage({
 
     const oldIndex = tasks.findIndex((t) => t.id === active.id);
     const newIndex = tasks.findIndex((t) => t.id === over.id);
-    const reorderedTasks = arrayMove(tasks, oldIndex, newIndex);
+    if (oldIndex === -1 || newIndex === -1) return;
 
-    setOptimisticTasks(reorderedTasks);
+    const reorderedTasksList = arrayMove(tasks, oldIndex, newIndex);
+    setOptimisticTasks(reorderedTasksList);
 
     startTransition(async () => {
       try {
-        await reorderTasks(reorderedTasks.map((t) => t.id));
+        await reorderTasks(reorderedTasksList.map((t) => t.id));
+        setTasks(reorderedTasksList); // Sync state after successful reorder
         toast({
           title: "Schedule Updated",
           description: "Your tasks have been rearranged.",
@@ -212,7 +320,7 @@ export default function AppPage({
           description: "Could not save the new order.",
           variant: "destructive",
         });
-        setOptimisticTasks(tasks);
+        setOptimisticTasks(tasks); // Revert on error
       }
     });
   };
@@ -235,7 +343,8 @@ export default function AppPage({
         <TimelineView
           tasks={optimisticTasks}
           onUpdateTaskStatus={handleUpdateTaskStatus}
-          onBreakDownTask={handleBreakDownTask}
+          onEditTask={setEditingTask}
+          onDeleteTask={setDeletingTaskId}
           isLoading={isLoading}
           onDragEnd={handleDragEnd}
         />
@@ -259,7 +368,11 @@ export default function AppPage({
       />
       <main className="flex-grow container mx-auto p-4 flex flex-col gap-6">
         {!dailySummaryData && (
-          <TaskInputForm onSubmit={handleAddTask} isLoading={isLoading} />
+          <TaskInputForm 
+            onDecomposeSubmit={handleDecomposeTask}
+            onQuickAddSubmit={handleQuickAddTask}
+            isLoading={isLoading} 
+          />
         )}
 
         {mindfulSuggestion && (
@@ -277,6 +390,37 @@ export default function AppPage({
         tasks={tasks}
         missedTask={taskToReschedule}
       />
+      <EditTaskDialog
+        open={!!editingTask}
+        onOpenChange={(isOpen) => !isOpen && setEditingTask(null)}
+        task={editingTask}
+        onSave={handleUpdateTask}
+        isSaving={isLoading}
+      />
+      <AlertDialog
+        open={!!deletingTaskId}
+        onOpenChange={(isOpen) => !isOpen && setDeletingTaskId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will permanently delete this task. You cannot undo this.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTask}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isLoading}
+            >
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <footer className="text-center p-4 text-xs text-muted-foreground">
         <p>AdaptiPlan by Firebase Studio</p>
       </footer>

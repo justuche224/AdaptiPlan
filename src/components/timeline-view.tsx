@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { Task } from "@/lib/types";
@@ -24,7 +25,8 @@ import { CSS } from "@dnd-kit/utilities";
 interface TimelineViewProps {
   tasks: Task[];
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
-  onBreakDownTask: (taskId: string, taskTitle: string) => void;
+  onEditTask: (task: Task) => void;
+  onDeleteTask: (taskId: string) => void;
   isLoading: boolean;
   onDragEnd: (event: DragEndEvent) => void;
 }
@@ -41,12 +43,14 @@ type TimelineItem =
 function SortableTaskWrapper({
   task,
   onUpdateTaskStatus,
-  onBreakDown,
+  onEditTask,
+  onDeleteTask,
   isLoading,
 }: {
   task: Task;
   onUpdateTaskStatus: (taskId: string, status: "completed" | "missed") => void;
-  onBreakDown: (taskId: string, taskTitle: string) => void;
+  onEditTask: (task: Task) => void;
+  onDeleteTask: (taskId: string) => void;
   isLoading: boolean;
 }) {
   const {
@@ -70,7 +74,8 @@ function SortableTaskWrapper({
       <TaskCard
         task={task}
         onUpdateStatus={onUpdateTaskStatus}
-        onBreakDown={onBreakDown}
+        onEdit={onEditTask}
+        onDelete={onDeleteTask}
         isLoading={isLoading}
       />
     </div>
@@ -80,7 +85,8 @@ function SortableTaskWrapper({
 export function TimelineView({
   tasks,
   onUpdateTaskStatus,
-  onBreakDownTask,
+  onEditTask,
+  onDeleteTask,
   isLoading,
   onDragEnd,
 }: TimelineViewProps) {
@@ -173,7 +179,8 @@ export function TimelineView({
                   key={item.data.id}
                   task={item.data as Task}
                   onUpdateTaskStatus={onUpdateTaskStatus}
-                  onBreakDown={onBreakDownTask}
+                  onEditTask={onEditTask}
+                  onDeleteTask={onDeleteTask}
                   isLoading={isLoading}
                 />
               );
