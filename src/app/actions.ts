@@ -1,8 +1,7 @@
 "use server";
 
-import { z } from "zod";
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { tasks as tasksTable } from "@/db/schema/tasks";
 import { serverAuth } from "@/lib/server-auth";
@@ -24,7 +23,7 @@ import type {
 
 
 const getUserId = async () => {
-  const { session } = await serverAuth();
+  const session = await serverAuth();
   if (!session) {
     throw new Error("Unauthorized");
   }
@@ -44,10 +43,7 @@ const mapDbTaskToTask = (dbTask: typeof tasksTable.$inferSelect): Task => ({
 
 export async function getTasksForUser(): Promise<Task[]> {
   const userId = await getUserId();
-  const dbTasks = await db.query.tasks.findMany({
-    where: eq(tasksTable.userId, userId),
-    orderBy: [asc(tasksTable.sortOrder)],
-  });
+  const dbTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
   return dbTasks.map(mapDbTaskToTask);
 }
 
@@ -66,10 +62,7 @@ export async function addTaskAndDecompose(
     throw new Error("The AI couldn't break down the task.");
   }
 
-  const existingTasks = await db.query.tasks.findMany({
-    where: eq(tasksTable.userId, userId),
-    orderBy: [asc(tasksTable.sortOrder)],
-  });
+  const existingTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId)).orderBy(asc(tasksTable.sortOrder));
 
   let lastEndTime = new Date();
   let lastSortOrder = -1;
@@ -148,9 +141,7 @@ export async function updateTaskStatus(
 
 export async function reorderTasks(orderedTaskIds: string[]) {
     const userId = await getUserId();
-    const allTasks = await db.query.tasks.findMany({
-        where: eq(tasksTable.userId, userId),
-    });
+    const allTasks = await db.select().from(tasksTable).where(eq(tasksTable.userId, userId));
 
     if (allTasks.length === 0) return;
 
