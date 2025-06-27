@@ -6,6 +6,7 @@ import { getTasksForUser } from "../actions";
 
 const page = async () => {
   const data = await serverAuth();
+  console.log(data)
   if (!data?.session || !data.user) {
     return redirect("/sign-in");
   }

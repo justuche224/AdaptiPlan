@@ -14,4 +14,10 @@ export const auth = betterAuth({
   redirect: {
     signOut: "/sign-in",
   },
+  advanced: {
+    defaultCookieAttributes: {
+      sameSite: "none",
+      secure: false,
+    }
+  }
 });

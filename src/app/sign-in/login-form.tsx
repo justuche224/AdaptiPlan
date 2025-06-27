@@ -50,19 +50,26 @@ export function LoginForm({
     setSuccess(undefined);
 
     startTransition(async () => {
+      console.log("start login")
+      console.log(window.location.origin)
       const { error } = await authClient.signIn.email({
         email: values.email,
         password: values.password,
-        callbackURL: `${window.location.origin}${callbackURL}`,
+        // callbackURL: `"/app`,
         fetchOptions: {
           onSuccess: () => {
-            router.push(callbackURL);
+            console.log("success login")
+            router.push("/app");
           },
           onError(context) {
+            console.log("error login 1")
             if (context.error.status === 403) {
+              console.log(context.error)
+              console.log("error login 2")
               router.push("/app");
             } else if (context.error.status === 429) {
               const retryAfter = context.error.headers.get("X-Retry-After");
+              console.log("error login 2")
               setError(
                 `Clicking too fast! Please wait ${retryAfter} seconds before trying again.`
               );
